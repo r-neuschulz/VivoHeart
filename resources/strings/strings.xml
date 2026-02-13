@@ -1,0 +1,33 @@
+<strings>
+    <string id="AppName">VivoHeart</string>
+
+    <!-- Color scheme settings -->
+    <string id="FontColorScheme">Font Color Scheme</string>
+    <string id="BarsColorScheme">Bars Color Scheme</string>
+    <string id="White">White</string>
+    <string id="Greyscale">Greyscale</string>
+    <string id="Garmin">Garmin</string>
+    <string id="Viridis">Viridis</string>
+    <string id="Magma">Magma</string>
+    <string id="BarsPosition">Display Order</string>
+    <string id="BarsBehind">Time on Top</string>
+    <string id="BarsInFront">Bars on Top</string>
+    <string id="BarsGap">Bar Gaps</string>
+    <string id="BarsGapNone">None</string>
+    <string id="BarsGapDefault">Default</string>
+    <string id="TimePosition">Time Position</string>
+    <string id="TimePositionTop">Top</string>
+    <string id="TimePositionCentered">Centered</string>
+    <string id="TimeLayout">Time Layout</string>
+    <string id="TimeLayoutStacked">Stacked</string>
+    <string id="TimeLayoutSideBySide">Side by Side</string>
+    <string id="MinutesColorMode">Minutes Color</string>
+    <string id="MinutesColorDarker">Darker Shade</string>
+    <string id="MinutesColorMatch">Match Hours</string>
+    <string id="BarsHeight">Bar Height</string>
+    <string id="BarsHeight50">50%</string>
+    <string id="BarsHeight68">68%</string>
+    <string id="BarsHeight80">80%</string>
+    <string id="BarsHeight90">90%</string>
+    <string id="BarsHeight100">100%</string>
+</strings>

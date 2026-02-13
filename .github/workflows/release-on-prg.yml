@@ -1,0 +1,58 @@
+name: Release on .prg
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'VivoHeart.prg'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get next version
+        id: version
+        run: |
+          LATEST=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
+          if [ -z "$LATEST" ]; then
+            echo "tag=v1.1" >> $GITHUB_OUTPUT
+          else
+            # Parse vMAJOR.MINOR, increment minor
+            VER="${LATEST#v}"
+            MAJOR="${VER%%.*}"
+            MINOR="${VER#*.}"
+            MINOR="${MINOR%%.*}"
+            NEW_MINOR=$((MINOR + 1))
+            echo "tag=v${MAJOR}.${NEW_MINOR}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          PREV_TAG=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
+          if [ -z "$PREV_TAG" ]; then
+            BODY=$(git log --pretty=format:"- %s (%h)" --reverse)
+          else
+            BODY=$(git log ${PREV_TAG}..HEAD --pretty=format:"- %s (%h)" --reverse)
+          fi
+          echo "body<<EOF" >> $GITHUB_OUTPUT
+          echo "$BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: Release ${{ steps.version.outputs.tag }}
+          body: ${{ steps.notes.outputs.body }}
+          files: VivoHeart.prg
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

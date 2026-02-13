@@ -1,0 +1,10 @@
+<properties>
+    <property id="FontColorScheme" type="number">2</property>
+    <property id="BarsColorScheme" type="number">2</property>
+    <property id="BarsPosition" type="number">0</property>
+    <property id="BarsGap" type="number">1</property>
+    <property id="TimePosition" type="number">1</property>
+    <property id="TimeLayout" type="number">1</property>
+    <property id="MinutesColorMode" type="number">0</property>
+    <property id="BarsHeight" type="number">1</property>
+</properties>

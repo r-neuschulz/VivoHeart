@@ -1,0 +1,64 @@
+# Garmin Connect IQ Build Artifacts
+bin/
+gen/
+mir/
+internal-mir/
+external-mir/
+
+# Compiled Applications
+*.prg
+!VivoHeart.prg
+*.prg.debug
+*.prg.debug.xml
+*.prg.debug.debug.xml
+*-debug.prg.debug.xml
+
+# Settings (auto-generated from resources/settings/ during build)
+*-settings.json
+*.prg-settings.json
+
+# Build output
+VivoHeart.txt
+*.iq
+
+# Development Keys and Certificates
+developer_key
+*.key
+*.crt
+*.pem
+*.der
+
+# IDE and Editor Files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS Generated Files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Temporary Files
+*.tmp
+*.temp
+*.log
+
+# Backup Files
+*.bak
+*.backup
+
+# Resource Cache
+resources/cache/
+
+# Test Files
+test_*.prg
+test_*.prg.debug.xml
+
+# Optimization Summary (if you don't want to track it)
+# OPTIMIZATION_SUMMARY.md

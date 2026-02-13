@@ -1,0 +1,5 @@
+<fonts>
+    <font id="protomoleculefont" filename="ProtoMolecule.fnt" filter="0123456789"/>
+    <font id="protomoleculefontoutline" filename="ProtoMolecule_outline.fnt" filter="0123456789"/>
+    <font id="protomoleculefontoutlinethick" filename="ProtoMolecule_outline_thick.fnt" filter="0123456789"/>
+</fonts>

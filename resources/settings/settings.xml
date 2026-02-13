@@ -1,0 +1,59 @@
+<settings>
+    <setting propertyKey="@Properties.FontColorScheme" title="@Strings.FontColorScheme">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.White</listEntry>
+            <listEntry value="1">@Strings.Greyscale</listEntry>
+            <listEntry value="2">@Strings.Garmin</listEntry>
+            <listEntry value="3">@Strings.Viridis</listEntry>
+            <listEntry value="4">@Strings.Magma</listEntry>
+        </settingConfig>
+    </setting>
+    <setting propertyKey="@Properties.BarsColorScheme" title="@Strings.BarsColorScheme">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.White</listEntry>
+            <listEntry value="1">@Strings.Greyscale</listEntry>
+            <listEntry value="2">@Strings.Garmin</listEntry>
+            <listEntry value="3">@Strings.Viridis</listEntry>
+            <listEntry value="4">@Strings.Magma</listEntry>
+        </settingConfig>
+    </setting>
+    <setting propertyKey="@Properties.BarsPosition" title="@Strings.BarsPosition">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.BarsBehind</listEntry>
+            <listEntry value="1">@Strings.BarsInFront</listEntry>
+        </settingConfig>
+    </setting>
+    <setting propertyKey="@Properties.BarsGap" title="@Strings.BarsGap">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.BarsGapNone</listEntry>
+            <listEntry value="1">@Strings.BarsGapDefault</listEntry>
+        </settingConfig>
+    </setting>
+    <setting propertyKey="@Properties.TimePosition" title="@Strings.TimePosition">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.TimePositionTop</listEntry>
+            <listEntry value="1">@Strings.TimePositionCentered</listEntry>
+        </settingConfig>
+    </setting>
+    <setting propertyKey="@Properties.TimeLayout" title="@Strings.TimeLayout">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.TimeLayoutStacked</listEntry>
+            <listEntry value="1">@Strings.TimeLayoutSideBySide</listEntry>
+        </settingConfig>
+    </setting>
+    <setting propertyKey="@Properties.MinutesColorMode" title="@Strings.MinutesColorMode">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.MinutesColorDarker</listEntry>
+            <listEntry value="1">@Strings.MinutesColorMatch</listEntry>
+        </settingConfig>
+    </setting>
+    <setting propertyKey="@Properties.BarsHeight" title="@Strings.BarsHeight">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.BarsHeight50</listEntry>
+            <listEntry value="1">@Strings.BarsHeight68</listEntry>
+            <listEntry value="2">@Strings.BarsHeight80</listEntry>
+            <listEntry value="3">@Strings.BarsHeight90</listEntry>
+            <listEntry value="4">@Strings.BarsHeight100</listEntry>
+        </settingConfig>
+    </setting>
+</settings>
