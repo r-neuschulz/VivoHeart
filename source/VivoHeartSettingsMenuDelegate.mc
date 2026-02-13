@@ -12,6 +12,12 @@ class VivoHeartSettingsMenuDelegate extends Ui.Menu2InputDelegate {
         Menu2InputDelegate.initialize();
     }
 
+    function onBack() as Void {
+        // Pop menu and underlying settings view so one back press fully exits settings
+        Ui.popView(Ui.SLIDE_IMMEDIATE);
+        Ui.popView(Ui.SLIDE_IMMEDIATE);
+    }
+
     function onSelect(item as Ui.MenuItem) as Void {
         var id = item.getId();
         if (id != null) {
