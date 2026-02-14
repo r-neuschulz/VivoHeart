@@ -53,7 +53,9 @@ Supported watches share the **454×454 round AMOLED** display:
 
 ## Screenshots
 
-<img src="images/image.png" alt="screenshot" width="200"/>
+| Watchface | Localized Settings |
+|-----------|-------------------|
+| <img src="images/Screenshot 2026-02-14 143945.png" alt="VivoHeart watchface" width="200"/> | <img src="images/Screenshot 2026-02-14 144104.png" alt="Localized settings" width="200"/> |
 
 ## Support
 
@@ -63,6 +65,7 @@ I'll occasionally check comments on the Garmin IQ Store, too.
 
 ## Acknowledgements
 
-- thanks to [TitanicTurtle](https://apps.garmin.com/en-US/developer/b71882df-2664-4584-893a-e15a21471c4b/apps) for the guidance and support on my first steps
-- shoutout to [Jim_m_58](https://forums.garmin.com/members/jim_5f00_m_5f00_58), for their continuous help and support
-- appreciation to [darrencrotton/SnapshotHR](https://github.com/darrencroton/SnapshotHR) for the initial inspiration, and open sourcing their project. 
+- Thanks to [TitanicTurtle](https://apps.garmin.com/en-US/developer/b71882df-2664-4584-893a-e15a21471c4b/apps) for the guidance and support on my first steps
+- Shoutout to [Jim_m_58](https://forums.garmin.com/members/jim_5f00_m_5f00_58) for their continuous help and support
+- Appreciation to [darrencrotton/SnapshotHR](https://github.com/darrencroton/SnapshotHR) for the initial inspiration, and open sourcing their project
+- Time display font: [Protomolecule](https://github.com/ThinkDualBrain/Protomolecule) by Brian J. Hall (free for non-commercial use; inspired by The Expanse) 
