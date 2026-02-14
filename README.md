@@ -1,8 +1,9 @@
 # VivoHeart Garmin IQ Watchface
 
-![Connect IQ SDK](https://img.shields.io/badge/Connect_IQ_SDK-4.2.0-blue?style=flat-square)
+![Connect IQ SDK](https://img.shields.io/badge/Connect_IQ_SDK-8.4.1-blue?style=flat-square)
 ![Languages](https://img.shields.io/badge/Languages-35-green?style=flat-square)
-![Downloads](https://img.shields.io/badge/CIQ_Store_downloads-38-green?style=flat-square)
+
+<!-- ![Downloads](https://img.shields.io/badge/CIQ_Store_downloads-38-green?style=flat-square) -->
 <!-- ![Github badge](https://developer.garmin.com/static/connect-iq_badge-dark-35b152d2074fb5abd7394662f78d8a4f.svg) -->
  
 ## Introduction
@@ -27,7 +28,8 @@ Configure in Garmin Connect app or Connect IQ Store settings:
 - **Font Color Scheme** – White, Greyscale, Garmin, Viridis, or Magma (time display; default: Garmin)
 - **Bars Color Scheme** – White, Greyscale, Garmin, Viridis, or Magma (HR history graph; default: Garmin)
 - **Bars Position** – Time on Top or Bars on Top (default: Time on Top)
-- **Bars Gap** – None or Default (spacing between HR bars; default: Default)
+- **Bar Gaps** – None or Default (spacing between HR bars; default: Default)
+- **Bar Height** – 50%, 68%, 80%, 90%, or 100% (default: 68%)
 - **Time Position** – Top or Centered (default: Centered)
 - **Time Layout** – Stacked or Side by Side (default: Side by Side)
 - **Minutes Color Mode** – Darker Shade or Match Hours (default: Darker Shade)
