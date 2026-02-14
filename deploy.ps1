@@ -8,6 +8,7 @@ param(
     [string]$Output = "VivoHeart.prg",
     [switch]$NoBuild,
     [switch]$BuildOnly,  # Build .prg only, exit before deploy (artifact ready for manual copy)
+    [switch]$Production,  # Build .iq package for Connect IQ Store submission
     [switch]$Emulator,
     [switch]$DebugHR,    # Use synthetic HR data (ramp through all zones) for visual testing
     [switch]$DeploySettings  # Also copy .SET from simulator temp to device (for sideloaded app settings)
@@ -17,13 +18,44 @@ $ErrorActionPreference = "Stop"
 
 # 454x454 round AMOLED devices (same resolution, single build)
 $SupportedDevices = @(
-    "epix2pro51mm", "approachs7047mm", "descentmk351mm", "d2mach2",
-    "fenix847mm", "fenix8pro47mm", "fr57047mm", "fr965", "fr970",
-    "venu3", "venu445mm"
+    "epix2pro51mm", "approachs7047mm", "descentmk351mm",
+    "fenix847mm", "fr57047mm", "fr965", "fr970",
+    "venu3"
 )
 if ($ListDevices) {
     Write-Host "Supported devices (454x454):" -ForegroundColor Cyan
     $SupportedDevices | ForEach-Object { Write-Host "  $_" }
+    exit 0
+}
+
+# --- Production build (.iq package for Connect IQ Store) ---
+if ($Production) {
+    $sdkConfig = "$env:APPDATA\Garmin\ConnectIQ\current-sdk.cfg"
+    if (-not (Test-Path $sdkConfig)) {
+        Write-Host "Connect IQ SDK not found. Install from: https://developer.garmin.com/connect-iq/sdk/" -ForegroundColor Red
+        exit 1
+    }
+    $sdkPath = (Get-Content $sdkConfig -Raw).Trim()
+    $monkeyc = Join-Path $sdkPath "bin\monkeyc.bat"
+    if (-not (Test-Path $monkeyc)) {
+        Write-Host "monkeyc not found at: $monkeyc" -ForegroundColor Red
+        exit 1
+    }
+    $keyBase = if ([System.IO.Path]::IsPathRooted($KeyPath)) { $KeyPath } else { Join-Path $PSScriptRoot $KeyPath }
+    $keyFile = $null
+    foreach ($p in @($keyBase, $keyBase + ".der", $keyBase + ".pem", (Join-Path $PSScriptRoot "developer_key.der"), (Join-Path $PSScriptRoot "developer_key.pem"))) {
+        if (Test-Path $p) { $keyFile = (Resolve-Path $p).Path; break }
+    }
+    if (-not $keyFile) {
+        Write-Host "Developer key not found. Create with VS Code Monkey C extension or: openssl genrsa -out developer_key.pem 4096" -ForegroundColor Red
+        exit 1
+    }
+    $iqOutput = Join-Path $PSScriptRoot "VivoHeart.iq"
+    $junglePath = Join-Path $PSScriptRoot "monkey.jungle"
+    Write-Host "Building production .iq package for Connect IQ Store..." -ForegroundColor Green
+    & $monkeyc -f $junglePath -e -o $iqOutput -y $keyFile -O 3 -r
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    Write-Host "IQ package ready: $iqOutput" -ForegroundColor Green
     exit 0
 }
 
