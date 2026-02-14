@@ -1,14 +1,14 @@
 # VivoHeart Garmin IQ Watchface
 
 ![Connect IQ SDK](https://img.shields.io/badge/Connect_IQ_SDK-4.2.0-blue?style=flat-square)
-<!-- ![Downloads](https://img.shields.io/badge/CIQ_Store_downloads-38-green?style=flat-square)
-![Github badge](https://developer.garmin.com/static/connect-iq_badge-dark-35b152d2074fb5abd7394662f78d8a4f.svg)
- -->
+![Languages](https://img.shields.io/badge/Languages-35-green?style=flat-square)
+![Downloads](https://img.shields.io/badge/CIQ_Store_downloads-38-green?style=flat-square)
+<!-- ![Github badge](https://developer.garmin.com/static/connect-iq_badge-dark-35b152d2074fb5abd7394662f78d8a4f.svg) -->
  
 ## Introduction
-<!-- Briefly describe what the VivoHeart watchface is and its purpose. -->
 
-I've always been a big fan of how the Vivoactive HR displayed its heartrate graph. To me, past efforts felt informative, motivationa, and truly earned when they appeared on my watchface. There is a special joy in seeing a large spike due to a run. The repo aims to recreate that charming style with a basic watchface to have the heartrate history visible at all times on round watches.
+
+I've always been a big fan of how the Vivoactive HR displayed its heartrate graph. To me, past efforts felt informative, motivational, and truly earned when they appeared on my watchface. There is a special joy in seeing a large spike due to a run. The repo aims to recreate that charming style with a basic watchface to have the heartrate history visible at all times on round watches.
 
 ## Features
 
@@ -18,9 +18,8 @@ I've always been a big fan of how the Vivoactive HR displayed its heartrate grap
 
 ## Installation Instructions
 
-- (todo: Download from the Garmin IQ Store, you're ready to go)
-- **Deploy to watch:** Run `.\deploy.ps1` with your watch connected via USB (builds and copies to `GARMIN\APPS`), or copy the `.prg` file manually
-- **Build options:** Use `-Device <id>` to target a specific watch (default: `epix2pro51mm`), `-BuildOnly` for a `.prg` artifact without deploy, `-ListDevices` to see all supported device IDs
+- Download from the Garmin IQ Store and you're ready to go!
+- Copy the `.prg` file manually to `GARMIN\APPS` on your watch.
 
 ## Customization
 
@@ -29,8 +28,8 @@ Configure in Garmin Connect app or Connect IQ Store settings:
 - **Bars Color Scheme** – White, Greyscale, Garmin, Viridis, or Magma (HR history graph; default: Garmin)
 - **Bars Position** – Time on Top or Bars on Top (default: Time on Top)
 - **Bars Gap** – None or Default (spacing between HR bars; default: Default)
-- **Time Position** – Top or Centered (default: Top)
-- **Time Layout** – Stacked or Side by Side (default: Stacked)
+- **Time Position** – Top or Centered (default: Centered)
+- **Time Layout** – Stacked or Side by Side (default: Side by Side)
 - **Minutes Color Mode** – Darker Shade or Match Hours (default: Darker Shade)
 
 ## Compatibility
@@ -63,7 +62,7 @@ If you encounter any issues or have questions about the VivoHeart watchface, ple
 I'll occasionally check comments on the Garmin IQ Store, too.
 
 ## Acknowledgements
-<!-- Give credit to those who have contributed or inspired the project. -->
+
 - thanks to [TitanicTurtle](https://apps.garmin.com/en-US/developer/b71882df-2664-4584-893a-e15a21471c4b/apps) for the guidance and support on my first steps
 - shoutout to [Jim_m_58](https://forums.garmin.com/members/jim_5f00_m_5f00_58), for their continuous help and support
 - appreciation to [darrencrotton/SnapshotHR](https://github.com/darrencroton/SnapshotHR) for the initial inspiration, and open sourcing their project. 
