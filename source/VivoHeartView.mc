@@ -27,7 +27,7 @@ class VivoHeartView extends Ui.WatchFace {
     private var reducedWidth as Lang.Number = 0;
     private var stepSize as Lang.Number = 1;
     private var barIntervalMs as Lang.Number = 0;
-    private const MAX_DATA_POINTS = 77;
+    private const MAX_DATA_POINTS = 86;
     private const PERIOD_SEC = 6 * 3600;
 
     // Layout ratios (fraction of screen dimension)
@@ -176,22 +176,6 @@ class VivoHeartView extends Ui.WatchFace {
     private var lastCachedMin as Lang.Number = -1;
     private var lastIs24Hour as Lang.Boolean = true;
 
-    //! Returns [hourStr, minStr] – helper in type-checked code so compiler sees member reads
-    private function getCachedTimeStrings() as Lang.Array {
-        return [cachedHourStr, cachedMinStr];
-    }
-
-    //! Returns [lastHour, lastMin, lastIs24] – helper so compiler sees lastCached* reads
-    private function getTimeCacheState() as Lang.Array {
-        return [lastCachedHour, lastCachedMin, lastIs24Hour];
-    }
-
-    //! Updates time cache state – helper so compiler sees lastCached* writes
-    private function setTimeCacheState(lastHour as Lang.Number, lastMin as Lang.Number, is24 as Lang.Boolean) as Void {
-        lastCachedHour = lastHour;
-        lastCachedMin = lastMin;
-        lastIs24Hour = is24;
-    }
 
     //! Build age-estimated HR zones when UserProfile.getHeartRateZones returns null.
     //! Uses 220 - age for max HR; zone boundaries at 50%, 60%, 70%, 80%, 90%, 100%.
@@ -255,11 +239,6 @@ class VivoHeartView extends Ui.WatchFace {
             return forMinutes ? magmaDark[zoneIndex] : magmaFill[zoneIndex];
         }
         return Graphics.COLOR_WHITE;
-    }
-
-    //! Return the darker shade for minutes (scheme-aware)
-    private function getDarkerShadeForZone(zoneIndex as Lang.Number, schemeId as Lang.Number) as Lang.Number {
-        return getColorForZone(schemeId, zoneIndex, true);
     }
 
     //! Get current HR for time coloring. Production: ActivityMonitor or cached graph data.
@@ -361,7 +340,7 @@ class VivoHeartView extends Ui.WatchFace {
         var heightPct = getBarsHeightPercent();
         graphHeight = height * heightPct / 100;
         lastComputedHeightPct = heightPct;
-        reducedWidth = (width * GRAPH_WIDTH_RATIO).toNumber();
+        reducedWidth = (width * GRAPH_WIDTH_RATIO).toNumber() + 36;
         stepSize = (reducedWidth / MAX_DATA_POINTS).toNumber();
         if (stepSize < 1) { stepSize = 1; }
         barIntervalMs = (PERIOD_SEC * 1000 / MAX_DATA_POINTS).toNumber();
@@ -414,10 +393,9 @@ class VivoHeartView extends Ui.WatchFace {
         var hour = showClockTime.hour;
         var min  = showClockTime.min;
         var is24Hour = cachedIs24Hour;
-        var state = getTimeCacheState();
-        var lastHour = state[0] as Lang.Number;
-        var lastMin = state[1] as Lang.Number;
-        var lastIs24 = state[2] as Lang.Boolean;
+        var lastHour = lastCachedHour;
+        var lastMin = lastCachedMin;
+        var lastIs24 = lastIs24Hour;
         if (hour != lastHour || is24Hour != lastIs24) {
             if (is24Hour) {
                 cachedHourStr = hour.format("%02d");
@@ -429,11 +407,14 @@ class VivoHeartView extends Ui.WatchFace {
                 }
                 cachedHourStr = displayHour.format("%d");
             }
-            setTimeCacheState(hour, lastMin, is24Hour);
+            lastCachedHour = hour;
+            lastIs24Hour = is24Hour;
         }
         if (min != lastMin) {
             cachedMinStr  = min.format("%02d");
-            setTimeCacheState(hour, min, is24Hour);
+            lastCachedHour = hour;
+            lastCachedMin = min;
+            lastIs24Hour = is24Hour;
         }
 
         // Time colors based on current HR (same zone scale as graph); minutes per MinutesColorMode
@@ -446,7 +427,7 @@ class VivoHeartView extends Ui.WatchFace {
         if (currentHr != null && heartRateZones != null && heartRateZones.size() > 5) {
             var zoneIdx = getZoneIndex(currentHr, heartRateZones);
             hourColor = getColorForZone(fontScheme, zoneIdx, false);
-            minColor = (getMinutesColorMode() == 1) ? hourColor : getDarkerShadeForZone(zoneIdx, fontScheme);
+            minColor = (settingMinutesColorMode == 1) ? hourColor : getColorForZone(fontScheme, zoneIdx, true);
         }
 
         // Compute time positions from TimePosition and TimeLayout
@@ -470,9 +451,8 @@ class VivoHeartView extends Ui.WatchFace {
         // Draw order depends on BarsPosition setting:
         //   "Time on Top":  graph → outline → fill  (time fully on top)
         //   "Bars on Top":  outline → fill → graph  (bars fully on top)
-        var strs = getCachedTimeStrings();
-        var hourStr = strs[0] as Lang.String;
-        var minStr = strs[1] as Lang.String;
+        var hourStr = cachedHourStr;
+        var minStr = cachedMinStr;
         var just = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
         var justRight = Graphics.TEXT_JUSTIFY_RIGHT | Graphics.TEXT_JUSTIFY_VCENTER;
         var justLeft = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
@@ -733,21 +713,16 @@ class VivoHeartView extends Ui.WatchFace {
                     // Re-render to bitmap if bar data changed, scheme changed, gap changed, or bitmap was evicted
                     var barsGap = getBarsGap();
                     if (graphBitmapVersion != cachedBarVersion || lastRenderedBarsScheme != barsScheme || lastRenderedBarsGap != barsGap || !(gBitmap as Gfx.BufferedBitmap).isCached()) {
-                        drawBarsToBitmap(barsScheme);
+                        drawBarsToBitmap(gBitmap as Gfx.BufferedBitmap, barsScheme);
                         lastRenderedBarsScheme = barsScheme;
                         lastRenderedBarsGap = barsGap;
-                        // Re-fetch; drawBarsToBitmap may have re-rendered into the bitmap
-                        gBitmap = graphBitmapRef.get();
                     }
-                    if (gBitmap != null) {
-                        dc.drawBitmap(0, 0, gBitmap as Gfx.BufferedBitmap);
-                        bitmapDrawn = true;
-                    }
+                    dc.drawBitmap(0, 0, gBitmap as Gfx.BufferedBitmap);
+                    bitmapDrawn = true;
                 }
             }
             if (!bitmapDrawn) {
-                // Fallback: per-bar fillRectangle loops
-                dc.setPenWidth(1);
+                // Fallback: per-bar fillRectangle loops (setPenWidth not needed for fillRectangle)
                 drawAllBarBuckets(dc, Graphics.COLOR_BLACK, 0, getBarsColorScheme(), getBarWidth());
             }
         }
@@ -781,16 +756,12 @@ class VivoHeartView extends Ui.WatchFace {
 
     //! Render filled HR bars into the off-screen full-view bitmap using bars color scheme.
     //! Bitmap is full screen height so bar coordinates map 1:1 (no y translation needed).
-    private function drawBarsToBitmap(barsScheme as Lang.Number) as Void {
-        var ref = graphBitmapRef;
-        if (ref == null) { return; }
-        var bitmap = ref.get();
-        if (bitmap == null) { return; }
-        var bdc = (bitmap as Gfx.BufferedBitmap).getDc();
+    //! Caller passes the resolved BufferedBitmap to avoid redundant weak-reference lookups.
+    private function drawBarsToBitmap(bitmap as Gfx.BufferedBitmap, barsScheme as Lang.Number) as Void {
+        var bdc = bitmap.getDc();
         // Clear to transparent
         bdc.setColor(Graphics.COLOR_TRANSPARENT, Graphics.COLOR_TRANSPARENT);
         bdc.clear();
-        bdc.setPenWidth(1);
         // Draw each zone bucket with scheme colors (bitmap is full-screen, no y offset needed)
         drawAllBarBuckets(bdc, Graphics.COLOR_TRANSPARENT, 0, barsScheme, getBarWidth());
         graphBitmapVersion = cachedBarVersion;
@@ -799,7 +770,8 @@ class VivoHeartView extends Ui.WatchFace {
 
     //! Generate time-varying synthetic HR data that scrolls with the clock.
     //! Uses overlapping triangle waves + pseudo-random jitter to produce
-    //! realistic-looking patterns that cover all HR zones.
+    //! realistic-looking patterns that cover all HR zones (including zone 0 = below z0).
+    //! Extends range below z0 to model resting/sleep HR (typically 40–70 bpm).
     //! Included only in debug builds (excluded by :debugHrData annotation in production).
     (:debugHrData)
     private function generateDebugHrData() as Lang.Array {
@@ -807,7 +779,9 @@ class VivoHeartView extends Ui.WatchFace {
         if (zones == null || zones.size() < 6) { return []; }
         var z0 = zones[0] as Lang.Number;
         var z5 = zones[5] as Lang.Number;
-        var range = z5 - z0;
+        var minHr = z0 - 55;  // extend below z0 for resting/sleep (zone 0)
+        if (minHr < 40) { minHr = 40; }
+        var range = z5 - minHr;
 
         var ct = System.getClockTime();
         var minuteNow = ct.hour * 60 + ct.min;
@@ -840,8 +814,8 @@ class VivoHeartView extends Ui.WatchFace {
             if (pct < 0) { pct = 0; }
             if (pct > 100) { pct = 100; }
 
-            var hr = z0 + range * pct / 100;
-            if (hr < z0 - 10) { hr = z0 - 10; }
+            var hr = minHr + range * pct / 100;
+            if (hr < minHr) { hr = minHr; }
             if (hr > z5) { hr = z5; }
             data[i] = hr;
         }
