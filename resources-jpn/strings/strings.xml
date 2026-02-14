@@ -1,0 +1,34 @@
+<strings>
+    <string id="AppName">VivoHeart</string>
+
+    <!-- Color scheme settings -->
+    <string id="FontColorScheme">フォントの色</string>
+    <string id="BarsColorScheme">バーの色</string>
+    <string id="White">ホワイト</string>
+    <string id="Greyscale">グレースケール</string>
+    <string id="Garmin">Garmin</string>
+    <string id="Viridis">Viridis</string>
+    <string id="Magma">Magma</string>
+    <string id="BarsPosition">表示順序</string>
+    <string id="BarsBehind">時刻を上に</string>
+    <string id="BarsInFront">バーを上に</string>
+    <string id="BarsGap">バーの間隔</string>
+    <string id="BarsGapNone">なし</string>
+    <string id="BarsGapDefault">デフォルト</string>
+    <string id="TimePosition">時刻の位置</string>
+    <string id="TimePositionTop">上</string>
+    <string id="TimePositionCentered">中央</string>
+    <string id="TimeLayout">時刻のレイアウト</string>
+    <string id="TimeLayoutStacked">上下配置</string>
+    <string id="TimeLayoutSideBySide">横並び</string>
+    <string id="MinutesColorMode">分の色</string>
+    <string id="MinutesColorDarker">暗めの色調</string>
+    <string id="MinutesColorMatch">時と同じ色</string>
+    <string id="BarsHeight">バーの高さ</string>
+    <string id="BarsHeight50">50%</string>
+    <string id="BarsHeight68">68%</string>
+    <string id="BarsHeight80">80%</string>
+    <string id="BarsHeight90">90%</string>
+    <string id="BarsHeight100">100%</string>
+    <string id="Select">選択</string>
+</strings>

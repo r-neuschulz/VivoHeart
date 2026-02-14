@@ -1,0 +1,34 @@
+<strings>
+    <string id="AppName">VivoHeart</string>
+
+    <!-- Color scheme settings -->
+    <string id="FontColorScheme">สีตัวอักษร</string>
+    <string id="BarsColorScheme">สีแถบ</string>
+    <string id="White">ขาว</string>
+    <string id="Greyscale">ระดับเทา</string>
+    <string id="Garmin">Garmin</string>
+    <string id="Viridis">Viridis</string>
+    <string id="Magma">Magma</string>
+    <string id="BarsPosition">ลำดับการแสดง</string>
+    <string id="BarsBehind">เวลาด้านบน</string>
+    <string id="BarsInFront">แถบด้านบน</string>
+    <string id="BarsGap">ช่องว่างแถบ</string>
+    <string id="BarsGapNone">ไม่มี</string>
+    <string id="BarsGapDefault">ค่าเริ่มต้น</string>
+    <string id="TimePosition">ตำแหน่งเวลา</string>
+    <string id="TimePositionTop">บน</string>
+    <string id="TimePositionCentered">กลาง</string>
+    <string id="TimeLayout">รูปแบบเวลา</string>
+    <string id="TimeLayoutStacked">ซ้อนกัน</string>
+    <string id="TimeLayoutSideBySide">เรียงข้าง</string>
+    <string id="MinutesColorMode">สีนาที</string>
+    <string id="MinutesColorDarker">โทนเข้มกว่า</string>
+    <string id="MinutesColorMatch">เหมือนชั่วโมง</string>
+    <string id="BarsHeight">ความสูงแถบ</string>
+    <string id="BarsHeight50">50%</string>
+    <string id="BarsHeight68">68%</string>
+    <string id="BarsHeight80">80%</string>
+    <string id="BarsHeight90">90%</string>
+    <string id="BarsHeight100">100%</string>
+    <string id="Select">เลือก</string>
+</strings>

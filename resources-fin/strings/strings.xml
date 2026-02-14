@@ -1,0 +1,34 @@
+<strings>
+    <string id="AppName">VivoHeart</string>
+
+    <!-- Color scheme settings -->
+    <string id="FontColorScheme">Fontin väri</string>
+    <string id="BarsColorScheme">Palkkien väri</string>
+    <string id="White">Valkoinen</string>
+    <string id="Greyscale">Harmaasävy</string>
+    <string id="Garmin">Garmin</string>
+    <string id="Viridis">Viridis</string>
+    <string id="Magma">Magma</string>
+    <string id="BarsPosition">Näyttöjärjestys</string>
+    <string id="BarsBehind">Aika ylhäällä</string>
+    <string id="BarsInFront">Palkit ylhäällä</string>
+    <string id="BarsGap">Palkkien väli</string>
+    <string id="BarsGapNone">Ei mitään</string>
+    <string id="BarsGapDefault">Oletus</string>
+    <string id="TimePosition">Ajan sijainti</string>
+    <string id="TimePositionTop">Ylhäällä</string>
+    <string id="TimePositionCentered">Keskitetty</string>
+    <string id="TimeLayout">Ajan asettelu</string>
+    <string id="TimeLayoutStacked">Pinottu</string>
+    <string id="TimeLayoutSideBySide">Vierekkäin</string>
+    <string id="MinutesColorMode">Minuuttien väri</string>
+    <string id="MinutesColorDarker">Tummempi sävy</string>
+    <string id="MinutesColorMatch">Kuten tunnit</string>
+    <string id="BarsHeight">Palkkien korkeus</string>
+    <string id="BarsHeight50">50%</string>
+    <string id="BarsHeight68">68%</string>
+    <string id="BarsHeight80">80%</string>
+    <string id="BarsHeight90">90%</string>
+    <string id="BarsHeight100">100%</string>
+    <string id="Select">Valitse</string>
+</strings>

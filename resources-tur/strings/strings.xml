@@ -1,0 +1,34 @@
+<strings>
+    <string id="AppName">VivoHeart</string>
+
+    <!-- Color scheme settings -->
+    <string id="FontColorScheme">Yazı tipi rengi</string>
+    <string id="BarsColorScheme">Çubuk rengi</string>
+    <string id="White">Beyaz</string>
+    <string id="Greyscale">Gri tonları</string>
+    <string id="Garmin">Garmin</string>
+    <string id="Viridis">Viridis</string>
+    <string id="Magma">Magma</string>
+    <string id="BarsPosition">Görüntüleme sırası</string>
+    <string id="BarsBehind">Saat üstte</string>
+    <string id="BarsInFront">Çubuklar üstte</string>
+    <string id="BarsGap">Çubuk aralığı</string>
+    <string id="BarsGapNone">Yok</string>
+    <string id="BarsGapDefault">Varsayılan</string>
+    <string id="TimePosition">Saat konumu</string>
+    <string id="TimePositionTop">Üst</string>
+    <string id="TimePositionCentered">Ortalı</string>
+    <string id="TimeLayout">Saat düzeni</string>
+    <string id="TimeLayoutStacked">Üst üste</string>
+    <string id="TimeLayoutSideBySide">Yan yana</string>
+    <string id="MinutesColorMode">Dakika rengi</string>
+    <string id="MinutesColorDarker">Koyu ton</string>
+    <string id="MinutesColorMatch">Saat ile aynı</string>
+    <string id="BarsHeight">Çubuk yüksekliği</string>
+    <string id="BarsHeight50">50%</string>
+    <string id="BarsHeight68">68%</string>
+    <string id="BarsHeight80">80%</string>
+    <string id="BarsHeight90">90%</string>
+    <string id="BarsHeight100">100%</string>
+    <string id="Select">Seç</string>
+</strings>

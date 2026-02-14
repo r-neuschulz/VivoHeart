@@ -1,0 +1,34 @@
+<strings>
+    <string id="AppName">VivoHeart</string>
+
+    <!-- Color scheme settings -->
+    <string id="FontColorScheme">Цвят на шрифта</string>
+    <string id="BarsColorScheme">Цвят на лентите</string>
+    <string id="White">Бял</string>
+    <string id="Greyscale">Сиво</string>
+    <string id="Garmin">Garmin</string>
+    <string id="Viridis">Viridis</string>
+    <string id="Magma">Magma</string>
+    <string id="BarsPosition">Ред на показване</string>
+    <string id="BarsBehind">Час отгоре</string>
+    <string id="BarsInFront">Ленти отгоре</string>
+    <string id="BarsGap">Разстояние</string>
+    <string id="BarsGapNone">Без</string>
+    <string id="BarsGapDefault">По подразбиране</string>
+    <string id="TimePosition">Позиция на часа</string>
+    <string id="TimePositionTop">Горе</string>
+    <string id="TimePositionCentered">Центрирано</string>
+    <string id="TimeLayout">Оформление на часа</string>
+    <string id="TimeLayoutStacked">Един над друг</string>
+    <string id="TimeLayoutSideBySide">Един до друг</string>
+    <string id="MinutesColorMode">Цвят на минутите</string>
+    <string id="MinutesColorDarker">По-тъмен нюанс</string>
+    <string id="MinutesColorMatch">Като часовете</string>
+    <string id="BarsHeight">Височина на лентите</string>
+    <string id="BarsHeight50">50%</string>
+    <string id="BarsHeight68">68%</string>
+    <string id="BarsHeight80">80%</string>
+    <string id="BarsHeight90">90%</string>
+    <string id="BarsHeight100">100%</string>
+    <string id="Select">Избор</string>
+</strings>

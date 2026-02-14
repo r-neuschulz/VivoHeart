@@ -1,0 +1,34 @@
+<strings>
+    <string id="AppName">VivoHeart</string>
+
+    <!-- Color scheme settings -->
+    <string id="FontColorScheme">Skriftfarge</string>
+    <string id="BarsColorScheme">Søylefarge</string>
+    <string id="White">Hvit</string>
+    <string id="Greyscale">Gråtoner</string>
+    <string id="Garmin">Garmin</string>
+    <string id="Viridis">Viridis</string>
+    <string id="Magma">Magma</string>
+    <string id="BarsPosition">Visningsrekkefølge</string>
+    <string id="BarsBehind">Tid øverst</string>
+    <string id="BarsInFront">Søyler øverst</string>
+    <string id="BarsGap">Søyleavstand</string>
+    <string id="BarsGapNone">Ingen</string>
+    <string id="BarsGapDefault">Standard</string>
+    <string id="TimePosition">Tidsposisjon</string>
+    <string id="TimePositionTop">Topp</string>
+    <string id="TimePositionCentered">Sentrert</string>
+    <string id="TimeLayout">Tidslayout</string>
+    <string id="TimeLayoutStacked">Stablet</string>
+    <string id="TimeLayoutSideBySide">Side ved side</string>
+    <string id="MinutesColorMode">Minuttfarge</string>
+    <string id="MinutesColorDarker">Mørkere nyanse</string>
+    <string id="MinutesColorMatch">Som timer</string>
+    <string id="BarsHeight">Søylehøyde</string>
+    <string id="BarsHeight50">50%</string>
+    <string id="BarsHeight68">68%</string>
+    <string id="BarsHeight80">80%</string>
+    <string id="BarsHeight90">90%</string>
+    <string id="BarsHeight100">100%</string>
+    <string id="Select">Velg</string>
+</strings>

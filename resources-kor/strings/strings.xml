@@ -1,0 +1,34 @@
+<strings>
+    <string id="AppName">VivoHeart</string>
+
+    <!-- Color scheme settings -->
+    <string id="FontColorScheme">글꼴 색상</string>
+    <string id="BarsColorScheme">막대 색상</string>
+    <string id="White">흰색</string>
+    <string id="Greyscale">회색조</string>
+    <string id="Garmin">Garmin</string>
+    <string id="Viridis">Viridis</string>
+    <string id="Magma">Magma</string>
+    <string id="BarsPosition">표시 순서</string>
+    <string id="BarsBehind">시간 위</string>
+    <string id="BarsInFront">막대 위</string>
+    <string id="BarsGap">막대 간격</string>
+    <string id="BarsGapNone">없음</string>
+    <string id="BarsGapDefault">기본값</string>
+    <string id="TimePosition">시간 위치</string>
+    <string id="TimePositionTop">상단</string>
+    <string id="TimePositionCentered">가운데</string>
+    <string id="TimeLayout">시간 레이아웃</string>
+    <string id="TimeLayoutStacked">세로 배치</string>
+    <string id="TimeLayoutSideBySide">가로 배치</string>
+    <string id="MinutesColorMode">분 색상</string>
+    <string id="MinutesColorDarker">어두운 톤</string>
+    <string id="MinutesColorMatch">시간과 동일</string>
+    <string id="BarsHeight">막대 높이</string>
+    <string id="BarsHeight50">50%</string>
+    <string id="BarsHeight68">68%</string>
+    <string id="BarsHeight80">80%</string>
+    <string id="BarsHeight90">90%</string>
+    <string id="BarsHeight100">100%</string>
+    <string id="Select">선택</string>
+</strings>

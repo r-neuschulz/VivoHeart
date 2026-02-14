@@ -1,0 +1,34 @@
+<strings>
+    <string id="AppName">VivoHeart</string>
+
+    <!-- Color scheme settings -->
+    <string id="FontColorScheme">Betűszín</string>
+    <string id="BarsColorScheme">Sávok színe</string>
+    <string id="White">Fehér</string>
+    <string id="Greyscale">Szürkeárnyalatos</string>
+    <string id="Garmin">Garmin</string>
+    <string id="Viridis">Viridis</string>
+    <string id="Magma">Magma</string>
+    <string id="BarsPosition">Megjelenítési sorrend</string>
+    <string id="BarsBehind">Idő felül</string>
+    <string id="BarsInFront">Sávok felül</string>
+    <string id="BarsGap">Sávok közti rés</string>
+    <string id="BarsGapNone">Nincs</string>
+    <string id="BarsGapDefault">Alapértelmezett</string>
+    <string id="TimePosition">Idő pozíciója</string>
+    <string id="TimePositionTop">Felül</string>
+    <string id="TimePositionCentered">Középre</string>
+    <string id="TimeLayout">Idő elrendezése</string>
+    <string id="TimeLayoutStacked">Egymás alatt</string>
+    <string id="TimeLayoutSideBySide">Egymás mellett</string>
+    <string id="MinutesColorMode">Percek színe</string>
+    <string id="MinutesColorDarker">Sötétebb árnyalat</string>
+    <string id="MinutesColorMatch">Mint az órák</string>
+    <string id="BarsHeight">Sávok magassága</string>
+    <string id="BarsHeight50">50%</string>
+    <string id="BarsHeight68">68%</string>
+    <string id="BarsHeight80">80%</string>
+    <string id="BarsHeight90">90%</string>
+    <string id="BarsHeight100">100%</string>
+    <string id="Select">Kiválasztás</string>
+</strings>
