@@ -23,28 +23,55 @@ class VivoHeartSettingsMenuDelegate extends Ui.Menu2InputDelegate {
         if (id != null) {
             var key = id.toString();
             if (key.equals("FontColorScheme") || key.equals("BarsColorScheme")) {
-                pushPicker(key, ["White", "Greyscale", "Garmin", "Viridis", "Magma"]);
+                pushPicker(key, [
+                    Ui.loadResource(Rez.Strings.White),
+                    Ui.loadResource(Rez.Strings.Greyscale),
+                    Ui.loadResource(Rez.Strings.Garmin),
+                    Ui.loadResource(Rez.Strings.Viridis),
+                    Ui.loadResource(Rez.Strings.Magma)
+                ]);
             } else if (key.equals("BarsPosition")) {
-                pushPicker(key, ["Time on Top", "Bars on Top"]);
+                pushPicker(key, [
+                    Ui.loadResource(Rez.Strings.BarsBehind),
+                    Ui.loadResource(Rez.Strings.BarsInFront)
+                ]);
             } else if (key.equals("BarsGap")) {
-                pushPicker(key, ["None", "Default"]);
+                pushPicker(key, [
+                    Ui.loadResource(Rez.Strings.BarsGapNone),
+                    Ui.loadResource(Rez.Strings.BarsGapDefault)
+                ]);
             } else if (key.equals("TimePosition")) {
-                pushPicker(key, ["Top", "Centered"]);
+                pushPicker(key, [
+                    Ui.loadResource(Rez.Strings.TimePositionTop),
+                    Ui.loadResource(Rez.Strings.TimePositionCentered)
+                ]);
             } else if (key.equals("TimeLayout")) {
-                pushPicker(key, ["Stacked", "Side by Side"]);
+                pushPicker(key, [
+                    Ui.loadResource(Rez.Strings.TimeLayoutStacked),
+                    Ui.loadResource(Rez.Strings.TimeLayoutSideBySide)
+                ]);
             } else if (key.equals("MinutesColorMode")) {
-                pushPicker(key, ["Darker Shade", "Match Hours"]);
+                pushPicker(key, [
+                    Ui.loadResource(Rez.Strings.MinutesColorDarker),
+                    Ui.loadResource(Rez.Strings.MinutesColorMatch)
+                ]);
             } else if (key.equals("BarsHeight")) {
-                pushPicker(key, ["50%", "68%", "80%", "90%", "100%"]);
+                pushPicker(key, [
+                    Ui.loadResource(Rez.Strings.BarsHeight50),
+                    Ui.loadResource(Rez.Strings.BarsHeight68),
+                    Ui.loadResource(Rez.Strings.BarsHeight80),
+                    Ui.loadResource(Rez.Strings.BarsHeight90),
+                    Ui.loadResource(Rez.Strings.BarsHeight100)
+                ]);
             }
         }
     }
 
     private function pushPicker(propertyKey as Lang.String, labels as Lang.Array) as Void {
-        var picker = new Ui.Menu2({:title => "Select"});
+        var picker = new Ui.Menu2({:title => Ui.loadResource(Rez.Strings.Select)});
         for (var i = 0; i < labels.size(); i++) {
             picker.addItem(new Ui.MenuItem(labels[i] as Lang.String, null, i, {}));
         }
-        Ui.pushView(picker, new $.VivoHeartSettingsPickerDelegate(propertyKey, labels.size()), Ui.SLIDE_IMMEDIATE);
+        Ui.pushView(picker, new $.VivoHeartSettingsPickerDelegate(propertyKey), Ui.SLIDE_IMMEDIATE);
     }
 }

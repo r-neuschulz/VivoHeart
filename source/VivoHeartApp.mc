@@ -5,6 +5,8 @@ using Toybox.WatchUi as Ui;
 
 class VivoHeartApp extends App.AppBase {
 
+    private var vivoHeartView as VivoHeartView or Null = null;
+
     function initialize() {
         AppBase.initialize();
     }
@@ -19,7 +21,8 @@ class VivoHeartApp extends App.AppBase {
 
     // Return the initial view of your application here
     function getInitialView() as [Ui.Views] or [Ui.Views, Ui.InputDelegates] {
-        return [ new VivoHeartView() ];
+        vivoHeartView = new VivoHeartView();
+        return [ vivoHeartView ];
     }
 
     // Return the settings view for "Customize" / "Trigger App Settings"
@@ -28,8 +31,11 @@ class VivoHeartApp extends App.AppBase {
     }
     
     //! Called when settings change (GCM, Express, simulator).
-    //! Requests a watch face redraw so the new values take effect immediately.
+    //! Refreshes cached settings in the view, then requests a redraw.
     function onSettingsChanged() as Void {
+        if (vivoHeartView != null) {
+            (vivoHeartView as VivoHeartView).loadSettings();
+        }
         Ui.requestUpdate();
     }
 

@@ -10,8 +10,7 @@ class VivoHeartSettingsPickerDelegate extends Ui.Menu2InputDelegate {
 
     private var _propertyKey as Lang.String;
 
-    function initialize(propertyKey as Lang.String, maxVal as Lang.Number) {
-        // maxVal reserved for validation if needed
+    function initialize(propertyKey as Lang.String) {
         Menu2InputDelegate.initialize();
         _propertyKey = propertyKey;
     }

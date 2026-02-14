@@ -42,7 +42,10 @@ class VivoHeartView extends Ui.WatchFace {
     private const GRAPH_WIDTH_RATIO = 0.97;  // graph width (slight inset from right edge)
     
     // Cache HR graph data - refetch interval based on bar count (period/numBars), only update when new sample arrives
+    // Production: values + timestamps (seconds) for fixed-interval time-based sampling. Debug: values only.
     private var cachedHeartRateData as Lang.Array or Null = null;
+    private var cachedHeartRateTimes as Lang.Array or Null = null;  // parallel array of epoch seconds; null in debug
+    private var cachedFetchEpochSec as Lang.Number = 0;  // Time.now().value() captured at fetch; used by bar builder
     private var cachedDataSampleCount as Lang.Number = 0;
     private var lastFetchTime as Lang.Number = 0;
 
@@ -76,6 +79,17 @@ class VivoHeartView extends Ui.WatchFace {
     private const SCHEME_VIRIDIS = 3;
     private const SCHEME_MAGMA = 4;
 
+    // Pre-computed zone color lookup tables (initialized once in initialize())
+    // Each array has 6 entries: one color per zone index 0..5.
+    private var greyscaleFill as Lang.Array = [] as Lang.Array;
+    private var greyscaleDark as Lang.Array = [] as Lang.Array;
+    private var garminFill as Lang.Array = [] as Lang.Array;
+    private var garminDark as Lang.Array = [] as Lang.Array;
+    private var viridisFill as Lang.Array = [] as Lang.Array;
+    private var viridisDark as Lang.Array = [] as Lang.Array;
+    private var magmaFill as Lang.Array = [] as Lang.Array;
+    private var magmaDark as Lang.Array = [] as Lang.Array;
+
     private var hasSensorHistory as Lang.Boolean = false;
 
     // BufferedBitmap for off-screen graph rendering (single drawBitmap per frame)
@@ -90,99 +104,69 @@ class VivoHeartView extends Ui.WatchFace {
     //! True when in low-power / Always On Display mode (after onEnterSleep)
     private var isLowPower as Lang.Boolean = false;
 
-    //! Read color scheme from properties (0..4). Default SCHEME_GARMIN if unavailable.
-    private function getFontColorScheme() as Lang.Number {
-        try {
-            var v = App.Properties.getValue("FontColorScheme");
-            if (v != null && v instanceof Lang.Number) {
-                var n = v as Lang.Number;
-                if (n >= 0 && n <= 4) { return n; }
-            }
-        } catch (e) { }
-        return SCHEME_GARMIN;
-    }
-    private function getBarsColorScheme() as Lang.Number {
-        try {
-            var v = App.Properties.getValue("BarsColorScheme");
-            if (v != null && v instanceof Lang.Number) {
-                var n = v as Lang.Number;
-                if (n >= 0 && n <= 4) { return n; }
-            }
-        } catch (e) { }
-        return SCHEME_GARMIN;
-    }
+    // Cached user settings – loaded once in initialize() and refreshed in loadSettings().
+    // Eliminates 9+ App.Properties.getValue() calls per frame.
+    private var settingFontColorScheme as Lang.Number = SCHEME_GARMIN;
+    private var settingBarsColorScheme as Lang.Number = SCHEME_GARMIN;
+    private var settingBarsPosition as Lang.Number = 0;
+    private var settingBarsGap as Lang.Number = 1;
+    private var settingTimePosition as Lang.Number = 1;
+    private var settingTimeLayout as Lang.Number = 1;
+    private var settingMinutesColorMode as Lang.Number = 0;
+    private var settingBarsHeightPercent as Lang.Number = 68;
+    private var cachedIs24Hour as Lang.Boolean = true;  // from System.getDeviceSettings(); refreshed in loadSettings()/onExitSleep()
+
+    //! Cached setting accessors (no property reads – values are pre-loaded).
+    private function getFontColorScheme() as Lang.Number { return settingFontColorScheme; }
+    private function getBarsColorScheme() as Lang.Number { return settingBarsColorScheme; }
     //! 0 = bars behind font, 1 = bars in front of font
-    private function getBarsPosition() as Lang.Number {
-        try {
-            var v = App.Properties.getValue("BarsPosition");
-            if (v != null && v instanceof Lang.Number) {
-                var n = v as Lang.Number;
-                if (n == 0 || n == 1) { return n; }
-            }
-        } catch (e) { }
-        return 0;
-    }
+    private function getBarsPosition() as Lang.Number { return settingBarsPosition; }
     //! 0 = no gaps (bars touch), 1 = default gaps (current)
-    private function getBarsGap() as Lang.Number {
-        try {
-            var v = App.Properties.getValue("BarsGap");
-            if (v != null && v instanceof Lang.Number) {
-                var n = v as Lang.Number;
-                if (n == 0 || n == 1) { return n; }
-            }
-        } catch (e) { }
-        return 1;
-    }
+    private function getBarsGap() as Lang.Number { return settingBarsGap; }
     //! 0 = top, 1 = centered
-    private function getTimePosition() as Lang.Number {
-        try {
-            var v = App.Properties.getValue("TimePosition");
-            if (v != null && v instanceof Lang.Number) {
-                var n = v as Lang.Number;
-                if (n == 0 || n == 1) { return n; }
-            }
-        } catch (e) { }
-        return 1;
-    }
+    private function getTimePosition() as Lang.Number { return settingTimePosition; }
     //! 0 = stacked (hour above minute), 1 = side by side
-    private function getTimeLayout() as Lang.Number {
-        try {
-            var v = App.Properties.getValue("TimeLayout");
-            if (v != null && v instanceof Lang.Number) {
-                var n = v as Lang.Number;
-                if (n == 0 || n == 1) { return n; }
-            }
-        } catch (e) { }
-        return 1;
-    }
+    private function getTimeLayout() as Lang.Number { return settingTimeLayout; }
     //! 0 = minutes darker shade, 1 = minutes match hours
-    private function getMinutesColorMode() as Lang.Number {
-        try {
-            var v = App.Properties.getValue("MinutesColorMode");
-            if (v != null && v instanceof Lang.Number) {
-                var n = v as Lang.Number;
-                if (n == 0 || n == 1) { return n; }
-            }
-        } catch (e) { }
-        return 0;
-    }
-    //! Bar height as percentage of screen height: 0=50%, 1=68% (default), 2=80%, 3=90%, 4=100%
-    private function getBarsHeightPercent() as Lang.Number {
-        try {
-            var v = App.Properties.getValue("BarsHeight");
-            if (v != null && v instanceof Lang.Number) {
-                var n = v as Lang.Number;
-                if (n == 0) { return 50; }
-                if (n == 2) { return 80; }
-                if (n == 3) { return 90; }
-                if (n == 4) { return 100; }
-            }
-        } catch (e) { }
-        return 68;  // default (setting value 1)
-    }
+    private function getMinutesColorMode() as Lang.Number { return settingMinutesColorMode; }
+    //! Bar height as percentage of screen height (already mapped from setting key)
+    private function getBarsHeightPercent() as Lang.Number { return settingBarsHeightPercent; }
     //! Bar width: stepSize when no gaps (bars touch), 2 when default gaps
     private function getBarWidth() as Lang.Number {
-        return (getBarsGap() == 0) ? stepSize : 2;
+        return (settingBarsGap == 0) ? stepSize : 2;
+    }
+
+    //! Read all user-facing settings from App.Properties and cache them.
+    //! Called once at startup and again whenever onSettingsChanged() fires.
+    function loadSettings() as Void {
+        settingFontColorScheme = readNumericSetting("FontColorScheme", 0, 4, SCHEME_GARMIN);
+        settingBarsColorScheme = readNumericSetting("BarsColorScheme", 0, 4, SCHEME_GARMIN);
+        settingBarsPosition = readNumericSetting("BarsPosition", 0, 1, 0);
+        settingBarsGap = readNumericSetting("BarsGap", 0, 1, 1);
+        settingTimePosition = readNumericSetting("TimePosition", 0, 1, 1);
+        settingTimeLayout = readNumericSetting("TimeLayout", 0, 1, 1);
+        settingMinutesColorMode = readNumericSetting("MinutesColorMode", 0, 1, 0);
+        // BarsHeight: map setting key (0..4) to percentage
+        var bh = readNumericSetting("BarsHeight", 0, 4, 1);
+        if (bh == 0) { settingBarsHeightPercent = 50; }
+        else if (bh == 2) { settingBarsHeightPercent = 80; }
+        else if (bh == 3) { settingBarsHeightPercent = 90; }
+        else if (bh == 4) { settingBarsHeightPercent = 100; }
+        else { settingBarsHeightPercent = 68; }
+        // Cache device-level is24Hour (avoids allocating DeviceSettings every frame)
+        cachedIs24Hour = System.getDeviceSettings().is24Hour;
+    }
+
+    //! Read a numeric setting with range validation and fallback default.
+    private function readNumericSetting(key as Lang.String, min as Lang.Number, max as Lang.Number, fallback as Lang.Number) as Lang.Number {
+        try {
+            var v = App.Properties.getValue(key);
+            if (v != null && v instanceof Lang.Number) {
+                var n = v as Lang.Number;
+                if (n >= min && n <= max) { return n; }
+            }
+        } catch (e) { }
+        return fallback;
     }
 
     // Cached formatted time strings – only reformat when minute/hour actually changes
@@ -251,36 +235,24 @@ class VivoHeartView extends Ui.WatchFace {
         return 5;
     }
 
-    //! Get fill color for a zone in the given scheme (0=White, 1=Greyscale, 2=Garmin, 3=Viridis, 4=Magma)
+    //! Get fill color for a zone in the given scheme (0=White, 1=Greyscale, 2=Garmin, 3=Viridis, 4=Magma).
+    //! Color lookup tables are pre-computed as class-level arrays (see initialize()) to avoid
+    //! allocating throwaway arrays on every call — this function is called 8+ times per frame.
     private function getColorForZone(schemeId as Lang.Number, zoneIndex as Lang.Number, forMinutes as Lang.Boolean) as Lang.Number {
         if (schemeId == SCHEME_WHITE) {
             return forMinutes ? Graphics.COLOR_LT_GRAY : Graphics.COLOR_WHITE;
         }
         if (schemeId == SCHEME_GREYSCALE) {
-            var fill = [Graphics.COLOR_WHITE, Graphics.COLOR_LT_GRAY, Graphics.COLOR_DK_GRAY,
-                        0x555555, 0x444444, 0x333333];  // progressively darker
-            var dark = [Graphics.COLOR_LT_GRAY, Graphics.COLOR_DK_GRAY, 0x444444,
-                        0x333333, 0x222222, 0x111111];  // darker shades
-            return forMinutes ? dark[zoneIndex] : fill[zoneIndex];
+            return forMinutes ? greyscaleDark[zoneIndex] : greyscaleFill[zoneIndex];
         }
         if (schemeId == SCHEME_GARMIN) {
-            var fill = [Graphics.COLOR_WHITE, Graphics.COLOR_LT_GRAY, COLOR_VIVID_BLUE,
-                        Graphics.COLOR_GREEN, COLOR_VIVID_ORANGE, Graphics.COLOR_RED];
-            var dark = [Graphics.COLOR_LT_GRAY, Graphics.COLOR_DK_GRAY, COLOR_DK_VIVID_BLUE,
-                        Graphics.COLOR_DK_GREEN, COLOR_DK_VIVID_ORANGE, Graphics.COLOR_DK_RED];
-            return forMinutes ? dark[zoneIndex] : fill[zoneIndex];
+            return forMinutes ? garminDark[zoneIndex] : garminFill[zoneIndex];
         }
         if (schemeId == SCHEME_VIRIDIS) {
-            // Viridis: dark purple → blue → teal → green → yellow (perceptually uniform)
-            var fill = [0x440154, 0x3b528b, 0x21908c, 0x5ec962, 0xb4de2c, 0xfde725];
-            var dark = [0x2d0e3a, 0x28395e, 0x166161, 0x3e9a47, 0x8bb820, 0xc7b81c];
-            return forMinutes ? dark[zoneIndex] : fill[zoneIndex];
+            return forMinutes ? viridisDark[zoneIndex] : viridisFill[zoneIndex];
         }
         if (schemeId == SCHEME_MAGMA) {
-            // Magma: dark purple → purple → magenta → orange → yellow (shifted; low zone no longer black)
-            var fill = [0x180f3e, 0x51127c, 0xb73779, 0xf89662, 0xfcfdbf, 0xfffef0];
-            var dark = [0x0f0a26, 0x350b53, 0x7a2553, 0xcb6a43, 0xd4d5a8, 0xe8e8d0];
-            return forMinutes ? dark[zoneIndex] : fill[zoneIndex];
+            return forMinutes ? magmaDark[zoneIndex] : magmaFill[zoneIndex];
         }
         return Graphics.COLOR_WHITE;
     }
@@ -357,8 +329,25 @@ class VivoHeartView extends Ui.WatchFace {
             heartRateZones = getDefaultHeartRateZones();
         }
         
+        // Pre-compute zone color lookup tables (allocated once, reused every frame)
+        greyscaleFill = [Graphics.COLOR_WHITE, Graphics.COLOR_LT_GRAY, Graphics.COLOR_DK_GRAY,
+                         0x555555, 0x444444, 0x333333];
+        greyscaleDark = [Graphics.COLOR_LT_GRAY, Graphics.COLOR_DK_GRAY, 0x444444,
+                         0x333333, 0x222222, 0x111111];
+        garminFill = [Graphics.COLOR_WHITE, Graphics.COLOR_LT_GRAY, COLOR_VIVID_BLUE,
+                      Graphics.COLOR_GREEN, COLOR_VIVID_ORANGE, Graphics.COLOR_RED];
+        garminDark = [Graphics.COLOR_LT_GRAY, Graphics.COLOR_DK_GRAY, COLOR_DK_VIVID_BLUE,
+                      Graphics.COLOR_DK_GREEN, COLOR_DK_VIVID_ORANGE, Graphics.COLOR_DK_RED];
+        viridisFill = [0x440154, 0x3b528b, 0x21908c, 0x5ec962, 0xb4de2c, 0xfde725];
+        viridisDark = [0x2d0e3a, 0x28395e, 0x166161, 0x3e9a47, 0x8bb820, 0xc7b81c];
+        magmaFill = [0x180f3e, 0x51127c, 0xb73779, 0xf89662, 0xfcfdbf, 0xfffef0];
+        magmaDark = [0x0f0a26, 0x350b53, 0x7a2553, 0xcb6a43, 0xd4d5a8, 0xe8e8d0];
+
         // Cache capability check (avoids repeated "has" checks in onUpdate)
         hasSensorHistory = (Toybox has :SensorHistory) && (Toybox.SensorHistory has :getHeartRateHistory);
+
+        // Cache all user-facing settings from App.Properties (read once, not every frame)
+        loadSettings();
     }
 
     // Load your resources here
@@ -424,7 +413,7 @@ class VivoHeartView extends Ui.WatchFace {
         // minute once/min, so almost every frame reuses the cached string.
         var hour = showClockTime.hour;
         var min  = showClockTime.min;
-        var is24Hour = System.getDeviceSettings().is24Hour;
+        var is24Hour = cachedIs24Hour;
         var state = getTimeCacheState();
         var lastHour = state[0] as Lang.Number;
         var lastMin = state[1] as Lang.Number;
@@ -538,12 +527,6 @@ class VivoHeartView extends Ui.WatchFace {
 
 }
 
-    // Always On view: outlined font + outlined rectangles to keep drawn pixels down for AMOLED.
-    // Time is drawn by onUpdate; this only draws the graph.
-    private function drawLowPowerView(dc as Gfx.Dc) as Void {
-        drawHeartRateGraph(dc, true);
-    }
-    
     //! Ensures cachedHeartRateData and bar caches are populated. Production: sensor fetch only.
     (:production)
     private function ensureHeartRateDataCached() as Lang.Boolean {
@@ -557,6 +540,7 @@ class VivoHeartView extends Ui.WatchFace {
         var debugData = generateDebugHrData();
         if (debugData.size() > 0) {
             cachedHeartRateData = debugData;
+            cachedHeartRateTimes = null;  // debug uses index-based sampling
             cachedDataSampleCount = cachedDataSampleCount + 1;
         }
         return ensureHeartRateDataCachedCore();
@@ -579,10 +563,12 @@ class VivoHeartView extends Ui.WatchFace {
         try {
             var sensorIter = Toybox.SensorHistory.getHeartRateHistory({:period => PERIOD_SEC, :order => SensorHistory.ORDER_OLDEST_FIRST});
             var newData = [];
+            var newTimes = [];
             var sample = sensorIter.next();
             while (sample != null) {
-                if (sample.data != null) {
+                if (sample.data != null && sample.when != null) {
                     newData.add(sample.data);
+                    newTimes.add((sample.when as Time.Moment).value());
                 }
                 sample = sensorIter.next();
             }
@@ -590,6 +576,8 @@ class VivoHeartView extends Ui.WatchFace {
             var newSize = newData.size();
             if (newSize > 0) {
                 cachedHeartRateData = newData;
+                cachedHeartRateTimes = newTimes;
+                cachedFetchEpochSec = Time.now().value();
                 cachedDataSampleCount = cachedDataSampleCount + 1;
             }
         } catch (ex) {
@@ -633,24 +621,67 @@ class VivoHeartView extends Ui.WatchFace {
             var zone5Bars = [];
             var allBars = [];
             
-            var zones5 = zones[5] as Lang.Number;  // hoist invariant out of loop
-            var lastIdx = dataSize - 1;
-            for (var x = 0; x < reducedWidth; x += stepSize) {
-                var sampleIndex = x * dataSize / reducedWidth;  // all Numbers – integer division, no toNumber needed
-                if (sampleIndex > lastIdx) {
-                    sampleIndex = lastIdx;
+            var zones5 = zones[5] as Lang.Number;
+            if (zones5 <= 0) { zones5 = 200; } // guard against corrupted profile
+            var slotDurationSec = PERIOD_SEC / MAX_DATA_POINTS;
+            var times = cachedHeartRateTimes;
+            var useTimeBased = (times != null && times.size() == dataSize);
+
+            // Build per-slot HR values: time-based (production) or index-based (debug)
+            if (useTimeBased && dataSize > 0) {
+                // Use epoch time captured at fetch so slots align with stored timestamps
+                var periodStartSec = cachedFetchEpochSec - PERIOD_SEC;
+                var slotValues = new [MAX_DATA_POINTS];
+                var slotDist = new [MAX_DATA_POINTS];
+                for (var i = 0; i < MAX_DATA_POINTS; i++) {
+                    slotValues[i] = null;
+                    slotDist[i] = slotDurationSec;
                 }
-                
-                var heartRate = data[sampleIndex] as Lang.Number or Null;
-                if (heartRate != null) {
+                // O(N) single pass: assign each sample to its time slot
+                for (var j = 0; j < dataSize; j++) {
+                    var sampleSec = (times[j]) as Lang.Number;
+                    var offsetSec = sampleSec - periodStartSec;
+                    if (offsetSec < 0) { continue; }
+                    var slotIdx = offsetSec / slotDurationSec;
+                    if (slotIdx >= MAX_DATA_POINTS) { continue; }
+                    var slotCenterSec = periodStartSec + slotIdx * slotDurationSec + slotDurationSec / 2;
+                    var d = sampleSec - slotCenterSec;
+                    var dist = (d > 0) ? d : (-d);
+                    if (dist < (slotDist[slotIdx] as Lang.Number)) {
+                        slotDist[slotIdx] = dist;
+                        slotValues[slotIdx] = data[j] as Lang.Number or Null;
+                    }
+                }
+                // Build bar arrays from slot values; empty slots are simply skipped (black = background)
+                for (var slotIdx = 0; slotIdx < MAX_DATA_POINTS; slotIdx++) {
+                    var heartRate = slotValues[slotIdx];
+                    if (heartRate == null) { continue; }
+                    var x = slotIdx * stepSize;
                     var y = (graphBottom - (heartRate * graphHeight / zones5)).toNumber();
                     var barH = graphBottom - y;
-                    if (barH <= 0) { continue; }  // filter at build time – drawing loops skip the check
-                    // Low-power flat array
-                    allBars.add(x);
-                    allBars.add(y);
-                    allBars.add(barH);
-                    // Full view - bucket by zone index (scheme applied at draw time)
+                    if (barH <= 0) { continue; }
+                    allBars.add(x); allBars.add(y); allBars.add(barH);
+                    var z = getZoneIndex(heartRate, zones);
+                    if (z == 0) { zone0Bars.add(x); zone0Bars.add(y); zone0Bars.add(barH); }
+                    else if (z == 1) { zone1Bars.add(x); zone1Bars.add(y); zone1Bars.add(barH); }
+                    else if (z == 2) { zone2Bars.add(x); zone2Bars.add(y); zone2Bars.add(barH); }
+                    else if (z == 3) { zone3Bars.add(x); zone3Bars.add(y); zone3Bars.add(barH); }
+                    else if (z == 4) { zone4Bars.add(x); zone4Bars.add(y); zone4Bars.add(barH); }
+                    else { zone5Bars.add(x); zone5Bars.add(y); zone5Bars.add(barH); }
+                }
+            } else {
+                // Debug / fallback: index-based proportional sampling (no timestamps)
+                var lastIdx = dataSize - 1;
+                for (var i = 0; i < MAX_DATA_POINTS; i++) {
+                    var sampleIndex = i * dataSize / MAX_DATA_POINTS;
+                    if (sampleIndex > lastIdx) { sampleIndex = lastIdx; }
+                    var heartRate = data[sampleIndex] as Lang.Number or Null;
+                    if (heartRate == null) { continue; }
+                    var x = i * stepSize;
+                    var y = (graphBottom - (heartRate * graphHeight / zones5)).toNumber();
+                    var barH = graphBottom - y;
+                    if (barH <= 0) { continue; }
+                    allBars.add(x); allBars.add(y); allBars.add(barH);
                     var z = getZoneIndex(heartRate, zones);
                     if (z == 0) { zone0Bars.add(x); zone0Bars.add(y); zone0Bars.add(barH); }
                     else if (z == 1) { zone1Bars.add(x); zone1Bars.add(y); zone1Bars.add(barH); }
@@ -681,10 +712,8 @@ class VivoHeartView extends Ui.WatchFace {
 
         // Draw bars – prefer single drawBitmap blit; fall back to per-bar loops
         if (useOutline) {
-            // Low-power / Always On: draw rectangles directly on the DC.
-            // A drawBitmap blit would register the entire bitmap area in the
-            // AMOLED heatmap, even for transparent pixels.  Direct drawing
-            // is fine here because AOD updates at most once per minute.
+            // Low-power / Always On: draw outlined rectangles directly on the DC.
+            // No-data slots are simply absent (black background = implicit gap).
             var bars = cachedAllBars;
             if (bars != null && bars.size() > 0) {
                 dc.setPenWidth(1);
@@ -696,18 +725,27 @@ class VivoHeartView extends Ui.WatchFace {
                 }
             }
         } else {
+            var bitmapDrawn = false;
             if (hasBufferedBitmap && graphBitmapRef != null) {
-                var gBitmap = graphBitmapRef.get() as Gfx.BufferedBitmap;
-                var barsScheme = getBarsColorScheme();
-                // Re-render to bitmap if bar data changed, scheme changed, gap changed, or bitmap was evicted
-                var barsGap = getBarsGap();
-                if (graphBitmapVersion != cachedBarVersion || lastRenderedBarsScheme != barsScheme || lastRenderedBarsGap != barsGap || !gBitmap.isCached()) {
-                    drawBarsToBitmap(barsScheme);
-                    lastRenderedBarsScheme = barsScheme;
-                    lastRenderedBarsGap = barsGap;
+                var gBitmap = graphBitmapRef.get();
+                if (gBitmap != null) {
+                    var barsScheme = getBarsColorScheme();
+                    // Re-render to bitmap if bar data changed, scheme changed, gap changed, or bitmap was evicted
+                    var barsGap = getBarsGap();
+                    if (graphBitmapVersion != cachedBarVersion || lastRenderedBarsScheme != barsScheme || lastRenderedBarsGap != barsGap || !(gBitmap as Gfx.BufferedBitmap).isCached()) {
+                        drawBarsToBitmap(barsScheme);
+                        lastRenderedBarsScheme = barsScheme;
+                        lastRenderedBarsGap = barsGap;
+                        // Re-fetch; drawBarsToBitmap may have re-rendered into the bitmap
+                        gBitmap = graphBitmapRef.get();
+                    }
+                    if (gBitmap != null) {
+                        dc.drawBitmap(0, 0, gBitmap as Gfx.BufferedBitmap);
+                        bitmapDrawn = true;
+                    }
                 }
-                dc.drawBitmap(0, 0, gBitmap);
-            } else {
+            }
+            if (!bitmapDrawn) {
                 // Fallback: per-bar fillRectangle loops
                 dc.setPenWidth(1);
                 drawAllBarBuckets(dc, Graphics.COLOR_BLACK, 0, getBarsColorScheme(), getBarWidth());
@@ -731,6 +769,7 @@ class VivoHeartView extends Ui.WatchFace {
     }
 
     //! Draw all six zone buckets onto a DC using the given color scheme.
+    //! No-data slots are absent; black background serves as implicit gap.
     private function drawAllBarBuckets(dc as Gfx.Dc, bgColor as Lang.Number, yOffset as Lang.Number, barsScheme as Lang.Number, barWidth as Lang.Number) as Void {
         drawBarBucket(dc, cachedZone0Bars, getColorForZone(barsScheme, 0, false), bgColor, yOffset, barWidth);
         drawBarBucket(dc, cachedZone1Bars, getColorForZone(barsScheme, 1, false), bgColor, yOffset, barWidth);
@@ -745,8 +784,9 @@ class VivoHeartView extends Ui.WatchFace {
     private function drawBarsToBitmap(barsScheme as Lang.Number) as Void {
         var ref = graphBitmapRef;
         if (ref == null) { return; }
-        var bitmap = ref.get() as Gfx.BufferedBitmap;
-        var bdc = bitmap.getDc();
+        var bitmap = ref.get();
+        if (bitmap == null) { return; }
+        var bdc = (bitmap as Gfx.BufferedBitmap).getDc();
         // Clear to transparent
         bdc.setColor(Graphics.COLOR_TRANSPARENT, Graphics.COLOR_TRANSPARENT);
         bdc.clear();
@@ -818,6 +858,7 @@ class VivoHeartView extends Ui.WatchFace {
     function onExitSleep() as Void {
         isLowPower = false;
         deferFetch = true;  // draw first wake frame with stale cache, fetch on next update
+        cachedIs24Hour = System.getDeviceSettings().is24Hour;  // refresh on wake
     }
 
     // Terminate any active timers and prepare for slow updates.
