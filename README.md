@@ -43,14 +43,11 @@ Supported watches share the **454×454 round AMOLED** display:
 | `epix2pro51mm` | epix Pro 51 mm, D2 Mach 1 Pro, tactix 7 AMOLED |
 | `approachs7047mm` | Approach S70 47 mm |
 | `descentmk351mm` | Descent Mk3i 51 mm |
-| `d2mach2` | D2 Mach 2 |
 | `fenix847mm` | fēnix 8 47/51 mm, tactix 8, quatix 8 |
-| `fenix8pro47mm` | fēnix 8 Pro 47/51 mm, quatix 8 Pro |
 | `fr57047mm` | Forerunner 570 47 mm |
 | `fr965` | Forerunner 965 |
 | `fr970` | Forerunner 970 |
 | `venu3` | Venu 3 |
-| `venu445mm` | Venu 4 45 mm, D2 Air X15 |
 
 
 ## Screenshots
