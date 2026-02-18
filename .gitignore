@@ -56,6 +56,10 @@ Thumbs.db
 # Resource Cache
 resources/cache/
 
+# Fonts generated at build from .svg (rects in FNT Bounds layer)
+resources/fonts/*.fnt
+resources/fonts/*.png
+
 # Test Files
 test_*.prg
 test_*.prg.debug.xml

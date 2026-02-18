@@ -16,6 +16,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Font outline variants: Outside px (expand rects to fit). Change here to tune outline thickness.
+$FontOutlineVariants = @(
+    @{ Outside = 1; Inside = 1; Png = "ProtoMolecule_0_Outline.png"; Fnt = "ProtoMolecule_outline.fnt" },
+    @{ Outside = 8; Inside = 1; Png = "ProtoMolecule_0_Outline_Thick.png"; Fnt = "ProtoMolecule_outline_thick.fnt" }
+)
+$FontExpandRects = ($FontOutlineVariants | ForEach-Object { $_.Outside } | Measure-Object -Maximum).Maximum
+
 # 454x454 round AMOLED devices (same resolution, single build)
 $SupportedDevices = @(
     "epix2pro51mm", "approachs7047mm", "descentmk351mm",
@@ -52,6 +59,13 @@ if ($Production) {
     }
     $iqOutput = Join-Path $PSScriptRoot "VivoHeart.iq"
     $junglePath = Join-Path $PSScriptRoot "monkey.jungle"
+    $scriptDir = Join-Path $PSScriptRoot "scripts"
+    # All variants share identical char bounds (ExpandRects = max Outside across outline variants)
+    & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -ExpandRects $FontExpandRects -OutputFnt "ProtoMolecule.fnt" -PageFile "ProtoMolecule_0.png"
+    foreach ($v in $FontOutlineVariants) {
+        & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -ExpandRects $FontExpandRects -OutputFnt $v.Fnt -PageFile $v.Png
+        & (Join-Path $scriptDir "Generate-OutlineFont.ps1") -Outside $v.Outside -Inside $v.Inside -OutputPng $v.Png
+    }
     Write-Host "Building production .iq package for Connect IQ Store..." -ForegroundColor Green
     & $monkeyc -f $junglePath -e -o $iqOutput -y $keyFile -O 3 -r
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
@@ -92,6 +106,13 @@ if (-not $NoBuild) {
 
     $jungleFile = if ($DebugHR) { "monkey.debug.jungle" } else { "monkey.jungle" }
     $junglePath = Join-Path $PSScriptRoot $jungleFile
+    $scriptDir = Join-Path $PSScriptRoot "scripts"
+    # All variants share identical char bounds (ExpandRects = max Outside across outline variants)
+    & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -ExpandRects $FontExpandRects -OutputFnt "ProtoMolecule.fnt" -PageFile "ProtoMolecule_0.png"
+    foreach ($v in $FontOutlineVariants) {
+        & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -ExpandRects $FontExpandRects -OutputFnt $v.Fnt -PageFile $v.Png
+        & (Join-Path $scriptDir "Generate-OutlineFont.ps1") -Outside $v.Outside -Inside $v.Inside -OutputPng $v.Png
+    }
     if ($DebugHR) {
         Write-Host "Building for $Device (DEBUG HR - synthetic data)..." -ForegroundColor Yellow
     } else {
