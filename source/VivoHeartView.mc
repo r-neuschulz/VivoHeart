@@ -400,12 +400,12 @@ class VivoHeartView extends Ui.WatchFace {
             if (is24Hour) {
                 cachedHourStr = hour.format("%02d");
             } else {
-                // 12-hour conversion: 0 becomes 12, 13-23 become 1-11
+                // 12-hour conversion: 0 becomes 12, 13-23 become 1-11; zero-pad to 02d
                 var displayHour = hour % 12;
                 if (displayHour == 0) {
                     displayHour = 12;
                 }
-                cachedHourStr = displayHour.format("%d");
+                cachedHourStr = displayHour.format("%02d");
             }
             lastCachedHour = hour;
             lastIs24Hour = is24Hour;
