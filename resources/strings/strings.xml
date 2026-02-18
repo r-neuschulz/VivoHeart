@@ -30,5 +30,10 @@
     <string id="BarsHeight80">80%</string>
     <string id="BarsHeight90">90%</string>
     <string id="BarsHeight100">100%</string>
+    <string id="FontSize">Font Size</string>
+    <string id="FontSizeSmall">Small</string>
+    <string id="FontSizeDefault">Default</string>
+    <string id="FontSizeLarge">Large</string>
+    <string id="FontSizeExtraLarge">Extra Large</string>
     <string id="Select">Select</string>
 </strings>

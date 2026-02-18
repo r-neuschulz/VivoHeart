@@ -23,6 +23,14 @@ $FontOutlineVariants = @(
 )
 $FontExpandRects = ($FontOutlineVariants | ForEach-Object { $_.Outside } | Measure-Object -Maximum).Maximum
 
+# Font size variants: 0=Small (88%), 1=Default (100%), 2=Large (112%), 3=Extra Large (125%, may clip)
+$FontSizeVariants = @(
+    @{ Scale = 0.88; Suffix = "_s" },
+    @{ Scale = 1.0;  Suffix = "" },
+    @{ Scale = 1.12; Suffix = "_l" },
+    @{ Scale = 1.25; Suffix = "_xl" }
+)
+
 # 454x454 round AMOLED devices (same resolution, single build)
 $SupportedDevices = @(
     "epix2pro51mm", "approachs7047mm", "descentmk351mm",
@@ -60,11 +68,19 @@ if ($Production) {
     $iqOutput = Join-Path $PSScriptRoot "VivoHeart.iq"
     $junglePath = Join-Path $PSScriptRoot "monkey.jungle"
     $scriptDir = Join-Path $PSScriptRoot "scripts"
-    # All variants share identical char bounds (ExpandRects = max Outside across outline variants)
-    & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -ExpandRects $FontExpandRects -OutputFnt "ProtoMolecule.fnt" -PageFile "ProtoMolecule_0.png"
-    foreach ($v in $FontOutlineVariants) {
-        & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -ExpandRects $FontExpandRects -OutputFnt $v.Fnt -PageFile $v.Png
-        & (Join-Path $scriptDir "Generate-OutlineFont.ps1") -Outside $v.Outside -Inside $v.Inside -OutputPng $v.Png
+    # Font size variants: generate fill, outline, outline_thick for each size
+    foreach ($sz in $FontSizeVariants) {
+        $sfx = $sz.Suffix
+        $fillPng = "ProtoMolecule_0$sfx.png"
+        $fillFnt = "ProtoMolecule$sfx.fnt"
+        & (Join-Path $scriptDir "Generate-FillFont.ps1") -OutputPng $fillPng -Scale $sz.Scale
+        & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -ExpandRects $FontExpandRects -OutputFnt $fillFnt -PageFile $fillPng -Scale $sz.Scale
+        foreach ($v in $FontOutlineVariants) {
+            $outPng = $v.Png -replace '\.png$', "$sfx.png"
+            $outFnt = $v.Fnt -replace '\.fnt$', "$sfx.fnt"
+            & (Join-Path $scriptDir "Generate-OutlineFont.ps1") -Outside $v.Outside -Inside $v.Inside -OutputPng $outPng -Scale $sz.Scale
+            & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -ExpandRects $FontExpandRects -OutputFnt $outFnt -PageFile $outPng -Scale $sz.Scale
+        }
     }
     Write-Host "Building production .iq package for Connect IQ Store..." -ForegroundColor Green
     & $monkeyc -f $junglePath -e -o $iqOutput -y $keyFile -O 3 -r
@@ -107,11 +123,19 @@ if (-not $NoBuild) {
     $jungleFile = if ($DebugHR) { "monkey.debug.jungle" } else { "monkey.jungle" }
     $junglePath = Join-Path $PSScriptRoot $jungleFile
     $scriptDir = Join-Path $PSScriptRoot "scripts"
-    # All variants share identical char bounds (ExpandRects = max Outside across outline variants)
-    & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -ExpandRects $FontExpandRects -OutputFnt "ProtoMolecule.fnt" -PageFile "ProtoMolecule_0.png"
-    foreach ($v in $FontOutlineVariants) {
-        & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -ExpandRects $FontExpandRects -OutputFnt $v.Fnt -PageFile $v.Png
-        & (Join-Path $scriptDir "Generate-OutlineFont.ps1") -Outside $v.Outside -Inside $v.Inside -OutputPng $v.Png
+    # Font size variants: generate fill, outline, outline_thick for each size
+    foreach ($sz in $FontSizeVariants) {
+        $sfx = $sz.Suffix
+        $fillPng = "ProtoMolecule_0$sfx.png"
+        $fillFnt = "ProtoMolecule$sfx.fnt"
+        & (Join-Path $scriptDir "Generate-FillFont.ps1") -OutputPng $fillPng -Scale $sz.Scale
+        & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -ExpandRects $FontExpandRects -OutputFnt $fillFnt -PageFile $fillPng -Scale $sz.Scale
+        foreach ($v in $FontOutlineVariants) {
+            $outPng = $v.Png -replace '\.png$', "$sfx.png"
+            $outFnt = $v.Fnt -replace '\.fnt$', "$sfx.fnt"
+            & (Join-Path $scriptDir "Generate-OutlineFont.ps1") -Outside $v.Outside -Inside $v.Inside -OutputPng $outPng -Scale $sz.Scale
+            & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -ExpandRects $FontExpandRects -OutputFnt $outFnt -PageFile $outPng -Scale $sz.Scale
+        }
     }
     if ($DebugHR) {
         Write-Host "Building for $Device (DEBUG HR - synthetic data)..." -ForegroundColor Yellow

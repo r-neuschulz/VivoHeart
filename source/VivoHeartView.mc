@@ -114,6 +114,7 @@ class VivoHeartView extends Ui.WatchFace {
     private var settingTimeLayout as Lang.Number = 1;
     private var settingMinutesColorMode as Lang.Number = 0;
     private var settingBarsHeightPercent as Lang.Number = 68;
+    private var settingFontSize as Lang.Number = 1;  // 0=Small, 1=Default, 2=Large, 3=Extra Large
     private var cachedIs24Hour as Lang.Boolean = true;  // from System.getDeviceSettings(); refreshed in loadSettings()/onExitSleep()
 
     //! Cached setting accessors (no property reads – values are pre-loaded).
@@ -131,6 +132,8 @@ class VivoHeartView extends Ui.WatchFace {
     private function getMinutesColorMode() as Lang.Number { return settingMinutesColorMode; }
     //! Bar height as percentage of screen height (already mapped from setting key)
     private function getBarsHeightPercent() as Lang.Number { return settingBarsHeightPercent; }
+    //! 0=Small, 1=Default, 2=Large, 3=Extra Large
+    private function getFontSize() as Lang.Number { return settingFontSize; }
     //! Bar width: stepSize when no gaps (bars touch), 2 when default gaps
     private function getBarWidth() as Lang.Number {
         return (settingBarsGap == 0) ? stepSize : 2;
@@ -153,8 +156,40 @@ class VivoHeartView extends Ui.WatchFace {
         else if (bh == 3) { settingBarsHeightPercent = 90; }
         else if (bh == 4) { settingBarsHeightPercent = 100; }
         else { settingBarsHeightPercent = 68; }
+        settingFontSize = readNumericSetting("FontSize", 0, 3, 1);
         // Cache device-level is24Hour (avoids allocating DeviceSettings every frame)
         cachedIs24Hour = System.getDeviceSettings().is24Hour;
+        // Reload fonts when FontSize setting changes
+        loadFontsForCurrentSize();
+    }
+
+    //! Load fill and outline fonts for the current FontSize setting (0=Small, 1=Default, 2=Large, 3=XL).
+    private function loadFontsForCurrentSize() as Void {
+        var sz = settingFontSize;
+        var fillRes = (sz == 0) ? Rez.Fonts.protomoleculefont_s :
+                     (sz == 2) ? Rez.Fonts.protomoleculefont_l :
+                     (sz == 3) ? Rez.Fonts.protomoleculefont_xl :
+                     Rez.Fonts.protomoleculefont;
+        var outRes = (sz == 0) ? Rez.Fonts.protomoleculefontoutline_s :
+                     (sz == 2) ? Rez.Fonts.protomoleculefontoutline_l :
+                     (sz == 3) ? Rez.Fonts.protomoleculefontoutline_xl :
+                     Rez.Fonts.protomoleculefontoutline;
+        var outThickRes = (sz == 0) ? Rez.Fonts.protomoleculefontoutlinethick_s :
+                         (sz == 2) ? Rez.Fonts.protomoleculefontoutlinethick_l :
+                         (sz == 3) ? Rez.Fonts.protomoleculefontoutlinethick_xl :
+                         Rez.Fonts.protomoleculefontoutlinethick;
+        var loadedFont = Ui.loadResource(fillRes);
+        if (loadedFont != null) {
+            bigNumProtomolecule = loadedFont as Gfx.FontReference;
+        }
+        var loadedOutline = Ui.loadResource(outRes);
+        if (loadedOutline != null) {
+            bigNumProtomoleculeOutline = loadedOutline as Gfx.FontReference;
+        }
+        var loadedOutlineThick = Ui.loadResource(outThickRes);
+        if (loadedOutlineThick != null) {
+            bigNumProtomoleculeOutlineThick = loadedOutlineThick as Gfx.FontReference;
+        }
     }
 
     //! Read a numeric setting with range validation and fallback default.
@@ -285,20 +320,9 @@ class VivoHeartView extends Ui.WatchFace {
     (:typecheck(false))
     function initialize() {
         WatchFace.initialize();
-        
-        // Init fonts (fallback to system font defaults if resource load fails)
-        var loadedFont = Ui.loadResource(Rez.Fonts.protomoleculefont);
-        if (loadedFont != null) {
-            bigNumProtomolecule = loadedFont as Gfx.FontReference;
-        }
-        var loadedFontOutline = Ui.loadResource(Rez.Fonts.protomoleculefontoutline);
-        if (loadedFontOutline != null) {
-            bigNumProtomoleculeOutline = loadedFontOutline as Gfx.FontReference;
-        }
-        var loadedFontOutlineThick = Ui.loadResource(Rez.Fonts.protomoleculefontoutlinethick);
-        if (loadedFontOutlineThick != null) {
-            bigNumProtomoleculeOutlineThick = loadedFontOutlineThick as Gfx.FontReference;
-        }
+
+        // Load settings first (needed for font size selection)
+        loadSettings();
 
         // Determine and store HR zones; fallback to age-estimated if profile not configured
         var profileZones = UserProfile.getHeartRateZones(Up.HR_ZONE_SPORT_GENERIC);
@@ -324,9 +348,6 @@ class VivoHeartView extends Ui.WatchFace {
 
         // Cache capability check (avoids repeated "has" checks in onUpdate)
         hasSensorHistory = (Toybox has :SensorHistory) && (Toybox.SensorHistory has :getHeartRateHistory);
-
-        // Cache all user-facing settings from App.Properties (read once, not every frame)
-        loadSettings();
     }
 
     // Load your resources here

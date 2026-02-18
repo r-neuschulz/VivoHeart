@@ -9,6 +9,7 @@ param(
     [int]$ExpandRects = 0,
     [string]$PageFile = "ProtoMolecule_0.png",
     [string]$OutputFnt = "ProtoMolecule.fnt",
+    [double]$Scale = 1.0,
     [string]$FontsDir = (Join-Path $PSScriptRoot "..\resources\fonts")
 )
 
@@ -72,10 +73,17 @@ $maxHeight = ($chars | ForEach-Object { $_.h } | Measure-Object -Maximum).Maximu
 $lineHeight = [Math]::Max(143, $maxHeight + 4)
 $base = $lineHeight - 3
 
+# Apply scale to all dimensions
+$scaleW = [Math]::Round(512 * $Scale)
+$scaleH = [Math]::Round(512 * $Scale)
+$scaledSize = [Math]::Round(140 * $Scale)
+$scaledLineHeight = [Math]::Round($lineHeight * $Scale)
+$scaledBase = [Math]::Round($base * $Scale)
+
 # BMFont text format
 $header = @"
-info face="ProtomoleculeRegular" size=140 bold=0 italic=0 charset="0123456789" unicode=0 stretchH=100 smooth=1 aa=1 padding=2,2,2,2 spacing=0,0 outline=0
-common lineHeight=$lineHeight base=$base scaleW=512 scaleH=512 pages=1 packed=0 alphaChnl=0 redChnl=0 greenChnl=0 blueChnl=0
+info face="ProtomoleculeRegular" size=$scaledSize bold=0 italic=0 charset="0123456789" unicode=0 stretchH=100 smooth=1 aa=1 padding=2,2,2,2 spacing=0,0 outline=0
+common lineHeight=$scaledLineHeight base=$scaledBase scaleW=$scaleW scaleH=$scaleH pages=1 packed=0 alphaChnl=0 redChnl=0 greenChnl=0 blueChnl=0
 page id=0 file="$PageFile"
 chars count=$($chars.Count)
 
@@ -83,10 +91,17 @@ chars count=$($chars.Count)
 
 $lines = @()
 foreach ($c in $chars) {
-    $lines += "char id=$($c.id)   x=$($c.x)    y=$($c.y)    width=$($c.w)    height=$($c.h)   xoffset=$($c.xoff)     yoffset=$($c.yoff)    xadvance=$($c.xadv)    page=0  chnl=15"
+    $sx = [Math]::Round($c.x * $Scale)
+    $sy = [Math]::Round($c.y * $Scale)
+    $sw = [Math]::Round($c.w * $Scale)
+    $sh = [Math]::Round($c.h * $Scale)
+    $sxoff = [Math]::Round($c.xoff * $Scale)
+    $syoff = [Math]::Round($c.yoff * $Scale)
+    $sxadv = [Math]::Round($c.xadv * $Scale)
+    $lines += "char id=$($c.id)   x=$sx    y=$sy    width=$sw    height=$sh   xoffset=$sxoff     yoffset=$syoff    xadvance=$sxadv    page=0  chnl=15"
 }
 
 $content = $header + ($lines -join "`n")
 $content | Set-Content -Path $DestFnt -Encoding ASCII -NoNewline
 
-Write-Host "Generated $OutputFnt (page=$PageFile)" -ForegroundColor Cyan
+Write-Host "Generated $OutputFnt (page=$PageFile, scale=$Scale)" -ForegroundColor Cyan

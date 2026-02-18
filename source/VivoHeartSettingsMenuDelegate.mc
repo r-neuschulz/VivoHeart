@@ -63,6 +63,13 @@ class VivoHeartSettingsMenuDelegate extends Ui.Menu2InputDelegate {
                     Ui.loadResource(Rez.Strings.BarsHeight90),
                     Ui.loadResource(Rez.Strings.BarsHeight100)
                 ]);
+            } else if (key.equals("FontSize")) {
+                pushPicker(key, [
+                    Ui.loadResource(Rez.Strings.FontSizeSmall),
+                    Ui.loadResource(Rez.Strings.FontSizeDefault),
+                    Ui.loadResource(Rez.Strings.FontSizeLarge),
+                    Ui.loadResource(Rez.Strings.FontSizeExtraLarge)
+                ]);
             }
         }
     }

@@ -56,4 +56,12 @@
             <listEntry value="4">@Strings.BarsHeight100</listEntry>
         </settingConfig>
     </setting>
+    <setting propertyKey="@Properties.FontSize" title="@Strings.FontSize">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.FontSizeSmall</listEntry>
+            <listEntry value="1">@Strings.FontSizeDefault</listEntry>
+            <listEntry value="2">@Strings.FontSizeLarge</listEntry>
+            <listEntry value="3">@Strings.FontSizeExtraLarge</listEntry>
+        </settingConfig>
+    </setting>
 </settings>

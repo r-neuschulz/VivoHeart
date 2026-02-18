@@ -7,4 +7,5 @@
     <property id="TimeLayout" type="number">1</property>
     <property id="MinutesColorMode" type="number">0</property>
     <property id="BarsHeight" type="number">1</property>
+    <property id="FontSize" type="number">1</property>
 </properties>

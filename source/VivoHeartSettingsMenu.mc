@@ -20,12 +20,14 @@ class VivoHeartSettingsMenu extends Ui.Menu2 {
         var timeLayout = getProp("TimeLayout", 0);
         var minutesColor = getProp("MinutesColorMode", 0);
         var barsHeight = getProp("BarsHeight", 1);
+        var fontSize = getProp("FontSize", 1);
 
         addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.FontColorScheme), fontSchemeLabel(fontScheme), "FontColorScheme", {}));
         addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.BarsColorScheme), barsSchemeLabel(barsScheme), "BarsColorScheme", {}));
         addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.BarsPosition), barsPosLabel(barsPos), "BarsPosition", {}));
         addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.BarsGap), barsGapLabel(barsGap), "BarsGap", {}));
         addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.BarsHeight), barsHeightLabel(barsHeight), "BarsHeight", {}));
+        addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.FontSize), fontSizeLabel(fontSize), "FontSize", {}));
         addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.TimePosition), timePosLabel(timePos), "TimePosition", {}));
         addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.TimeLayout), timeLayoutLabel(timeLayout), "TimeLayout", {}));
         addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.MinutesColorMode), minutesColorLabel(minutesColor), "MinutesColorMode", {}));
@@ -85,5 +87,15 @@ class VivoHeartSettingsMenu extends Ui.Menu2 {
             Ui.loadResource(Rez.Strings.BarsHeight100)
         ];
         return idx >= 0 && idx < labels.size() ? labels[idx] as Lang.String : Ui.loadResource(Rez.Strings.BarsHeight68) as Lang.String;
+    }
+
+    private function fontSizeLabel(idx as Lang.Number) as Lang.String {
+        var labels = [
+            Ui.loadResource(Rez.Strings.FontSizeSmall),
+            Ui.loadResource(Rez.Strings.FontSizeDefault),
+            Ui.loadResource(Rez.Strings.FontSizeLarge),
+            Ui.loadResource(Rez.Strings.FontSizeExtraLarge)
+        ];
+        return idx >= 0 && idx < labels.size() ? labels[idx] as Lang.String : Ui.loadResource(Rez.Strings.FontSizeDefault) as Lang.String;
     }
 }

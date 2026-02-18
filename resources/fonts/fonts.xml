@@ -1,5 +1,18 @@
 <fonts>
+    <!-- Small (88%) -->
+    <font id="protomoleculefont_s" filename="ProtoMolecule_s.fnt" filter="0123456789"/>
+    <font id="protomoleculefontoutline_s" filename="ProtoMolecule_outline_s.fnt" filter="0123456789"/>
+    <font id="protomoleculefontoutlinethick_s" filename="ProtoMolecule_outline_thick_s.fnt" filter="0123456789"/>
+    <!-- Default (100%) -->
     <font id="protomoleculefont" filename="ProtoMolecule.fnt" filter="0123456789"/>
     <font id="protomoleculefontoutline" filename="ProtoMolecule_outline.fnt" filter="0123456789"/>
     <font id="protomoleculefontoutlinethick" filename="ProtoMolecule_outline_thick.fnt" filter="0123456789"/>
+    <!-- Large (112%) -->
+    <font id="protomoleculefont_l" filename="ProtoMolecule_l.fnt" filter="0123456789"/>
+    <font id="protomoleculefontoutline_l" filename="ProtoMolecule_outline_l.fnt" filter="0123456789"/>
+    <font id="protomoleculefontoutlinethick_l" filename="ProtoMolecule_outline_thick_l.fnt" filter="0123456789"/>
+    <!-- Extra Large (125%) -->
+    <font id="protomoleculefont_xl" filename="ProtoMolecule_xl.fnt" filter="0123456789"/>
+    <font id="protomoleculefontoutline_xl" filename="ProtoMolecule_outline_xl.fnt" filter="0123456789"/>
+    <font id="protomoleculefontoutlinethick_xl" filename="ProtoMolecule_outline_thick_xl.fnt" filter="0123456789"/>
 </fonts>
