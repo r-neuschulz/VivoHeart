@@ -31,6 +31,8 @@ Configure in Garmin Connect app or Connect IQ Store settings:
 - **Bar Gaps** – None or Default (spacing between HR bars; default: Default)
 - **Bar Height** – 50%, 68%, 80%, 90%, or 100% (default: 68%)
 - **Font Size** – Small, Default, Large, or Extra Large (default: Default)
+- **Font** – ProtoMolecule, OCR Extended, Rockwell Extra Bold, or Sans Bold (default: ProtoMolecule)
+- **Font Antialias** – Off or On (default: On)
 - **Time Position** – Top or Centered (default: Centered)
 - **Time Layout** – Stacked or Side by Side (default: Side by Side)
 - **Minutes Color Mode** – Darker Shade or Match Hours (default: Darker Shade)

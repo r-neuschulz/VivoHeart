@@ -10,13 +10,14 @@ param(
     [int]$Inside = 1,
     [string]$OutputPng = "ProtoMolecule_0_Outline.png",
     [double]$Scale = 1.0,
-    [string]$FontsDir = (Join-Path $PSScriptRoot "..\resources\fonts")
+    [string]$FontsDir = (Join-Path $PSScriptRoot "..\resources\fonts"),
+    [string]$TempSvgPath = ""  # If set, keep temp SVG at this path (for FNT generation from object bboxes)
 )
 
 $ErrorActionPreference = "Stop"
 $FontsDir = (Resolve-Path $FontsDir).Path
 $SourceSvg = Join-Path $FontsDir "ProtoMolecule_0.svg"
-$TempSvg = Join-Path $env:TEMP "ProtoMolecule_outline_$([guid]::NewGuid().ToString('N').Substring(0,8)).svg"
+$TempSvg = if ($TempSvgPath) { $TempSvgPath } else { Join-Path $env:TEMP "ProtoMolecule_outline_$([guid]::NewGuid().ToString('N').Substring(0,8)).svg" }
 $DestPng = Join-Path $FontsDir $OutputPng
 
 if (-not (Test-Path $SourceSvg)) {
@@ -62,7 +63,7 @@ if (-not $inkscape) {
 $exportSize = [Math]::Round(512 * $Scale)
 $exportArgs = @($TempSvg, "--export-filename=$DestPng", "--export-type=png", "--export-width=$exportSize", "--export-height=$exportSize")
 & $inkscape $exportArgs 2>&1 | Out-Null
-Remove-Item $TempSvg -ErrorAction SilentlyContinue
+if (-not $TempSvgPath) { Remove-Item $TempSvg -ErrorAction SilentlyContinue }
 
 if (-not (Test-Path $DestPng)) {
     Write-Host "Inkscape export failed. PNG not created: $DestPng" -ForegroundColor Red

@@ -70,6 +70,18 @@ class VivoHeartSettingsMenuDelegate extends Ui.Menu2InputDelegate {
                     Ui.loadResource(Rez.Strings.FontSizeLarge),
                     Ui.loadResource(Rez.Strings.FontSizeExtraLarge)
                 ]);
+            } else if (key.equals("FontFamily")) {
+                pushPicker(key, [
+                    Ui.loadResource(Rez.Strings.FontFamilyProtomolecule),
+                    Ui.loadResource(Rez.Strings.FontFamilyOcrExtended),
+                    Ui.loadResource(Rez.Strings.FontFamilyRockwellExtraBold),
+                    Ui.loadResource(Rez.Strings.FontFamilySansBold)
+                ]);
+            } else if (key.equals("FontAntialias")) {
+                pushPicker(key, [
+                    Ui.loadResource(Rez.Strings.FontAntialiasOff),
+                    Ui.loadResource(Rez.Strings.FontAntialiasOn)
+                ]);
             }
         }
     }

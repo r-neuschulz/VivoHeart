@@ -21,7 +21,6 @@ $FontOutlineVariants = @(
     @{ Outside = 1; Inside = 1; Png = "ProtoMolecule_0_Outline.png"; Fnt = "ProtoMolecule_outline.fnt" },
     @{ Outside = 8; Inside = 1; Png = "ProtoMolecule_0_Outline_Thick.png"; Fnt = "ProtoMolecule_outline_thick.fnt" }
 )
-$FontExpandRects = ($FontOutlineVariants | ForEach-Object { $_.Outside } | Measure-Object -Maximum).Maximum
 
 # Font size variants: 0=Small (88%), 1=Default (100%), 2=Large (112%), 3=Extra Large (125%, may clip)
 $FontSizeVariants = @(
@@ -29,6 +28,13 @@ $FontSizeVariants = @(
     @{ Scale = 1.0;  Suffix = "" },
     @{ Scale = 1.12; Suffix = "_l" },
     @{ Scale = 1.25; Suffix = "_xl" }
+)
+
+# Alternate system fonts (generated from Windows fonts via Inkscape)
+$SystemFontVariants = @(
+    @{ Key = "OCR Extended"; Base = "OcrExtended" },
+    @{ Key = "Rockwell Extra Bold"; Base = "RockwellExtraBold" },
+    @{ Key = "Sans Bold"; Base = "SansBold" }
 )
 
 # 454x454 round AMOLED devices (same resolution, single build)
@@ -68,18 +74,30 @@ if ($Production) {
     $iqOutput = Join-Path $PSScriptRoot "VivoHeart.iq"
     $junglePath = Join-Path $PSScriptRoot "monkey.jungle"
     $scriptDir = Join-Path $PSScriptRoot "scripts"
-    # Font size variants: generate fill, outline, outline_thick for each size
+    # Font size variants: generate fill, outline, outline_thick for each size (bboxes from actual glyphs)
+    $fontsDir = Join-Path $PSScriptRoot "resources\fonts"
+    $sourceSvg = Join-Path $fontsDir "ProtoMolecule_0.svg"
     foreach ($sz in $FontSizeVariants) {
         $sfx = $sz.Suffix
         $fillPng = "ProtoMolecule_0$sfx.png"
         $fillFnt = "ProtoMolecule$sfx.fnt"
         & (Join-Path $scriptDir "Generate-FillFont.ps1") -OutputPng $fillPng -Scale $sz.Scale
-        & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -ExpandRects $FontExpandRects -OutputFnt $fillFnt -PageFile $fillPng -Scale $sz.Scale
+        & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -SourceSvg $sourceSvg -OutputFnt $fillFnt -PageFile $fillPng -Scale $sz.Scale
         foreach ($v in $FontOutlineVariants) {
             $outPng = $v.Png -replace '\.png$', "$sfx.png"
             $outFnt = $v.Fnt -replace '\.fnt$', "$sfx.fnt"
-            & (Join-Path $scriptDir "Generate-OutlineFont.ps1") -Outside $v.Outside -Inside $v.Inside -OutputPng $outPng -Scale $sz.Scale
-            & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -ExpandRects $FontExpandRects -OutputFnt $outFnt -PageFile $outPng -Scale $sz.Scale
+            $variantName = if ($v.Outside -eq 8) { "thick" } else { "outline" }
+            $tempOutlineSvg = Join-Path $fontsDir "ProtoMolecule_${variantName}_temp$sfx.svg"
+            & (Join-Path $scriptDir "Generate-OutlineFont.ps1") -Outside $v.Outside -Inside $v.Inside -OutputPng $outPng -Scale $sz.Scale -TempSvgPath $tempOutlineSvg
+            & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -SourceSvg $tempOutlineSvg -OutputFnt $outFnt -PageFile $outPng -Scale $sz.Scale
+            Remove-Item $tempOutlineSvg -ErrorAction SilentlyContinue
+        }
+    }
+    # Generate alternate system fonts (OCR Extended, Rockwell Extra Bold, Sans Bold)
+    foreach ($sf in $SystemFontVariants) {
+        foreach ($sz in $FontSizeVariants) {
+            $outputBase = if ($sz.Suffix) { $sf.Base + $sz.Suffix } else { $sf.Base }
+            & (Join-Path $scriptDir "Generate-SystemFont.ps1") -FontKey $sf.Key -OutputBase $outputBase -Scale $sz.Scale
         }
     }
     Write-Host "Building production .iq package for Connect IQ Store..." -ForegroundColor Green
@@ -123,18 +141,30 @@ if (-not $NoBuild) {
     $jungleFile = if ($DebugHR) { "monkey.debug.jungle" } else { "monkey.jungle" }
     $junglePath = Join-Path $PSScriptRoot $jungleFile
     $scriptDir = Join-Path $PSScriptRoot "scripts"
-    # Font size variants: generate fill, outline, outline_thick for each size
+    # Font size variants: generate fill, outline, outline_thick for each size (bboxes from actual glyphs)
+    $fontsDir = Join-Path $PSScriptRoot "resources\fonts"
+    $sourceSvg = Join-Path $fontsDir "ProtoMolecule_0.svg"
     foreach ($sz in $FontSizeVariants) {
         $sfx = $sz.Suffix
         $fillPng = "ProtoMolecule_0$sfx.png"
         $fillFnt = "ProtoMolecule$sfx.fnt"
         & (Join-Path $scriptDir "Generate-FillFont.ps1") -OutputPng $fillPng -Scale $sz.Scale
-        & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -ExpandRects $FontExpandRects -OutputFnt $fillFnt -PageFile $fillPng -Scale $sz.Scale
+        & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -SourceSvg $sourceSvg -OutputFnt $fillFnt -PageFile $fillPng -Scale $sz.Scale
         foreach ($v in $FontOutlineVariants) {
             $outPng = $v.Png -replace '\.png$', "$sfx.png"
             $outFnt = $v.Fnt -replace '\.fnt$', "$sfx.fnt"
-            & (Join-Path $scriptDir "Generate-OutlineFont.ps1") -Outside $v.Outside -Inside $v.Inside -OutputPng $outPng -Scale $sz.Scale
-            & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -ExpandRects $FontExpandRects -OutputFnt $outFnt -PageFile $outPng -Scale $sz.Scale
+            $variantName = if ($v.Outside -eq 8) { "thick" } else { "outline" }
+            $tempOutlineSvg = Join-Path $fontsDir "ProtoMolecule_${variantName}_temp$sfx.svg"
+            & (Join-Path $scriptDir "Generate-OutlineFont.ps1") -Outside $v.Outside -Inside $v.Inside -OutputPng $outPng -Scale $sz.Scale -TempSvgPath $tempOutlineSvg
+            & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -SourceSvg $tempOutlineSvg -OutputFnt $outFnt -PageFile $outPng -Scale $sz.Scale
+            Remove-Item $tempOutlineSvg -ErrorAction SilentlyContinue
+        }
+    }
+    # Generate alternate system fonts (OCR Extended, Rockwell Extra Bold, Sans Bold)
+    foreach ($sf in $SystemFontVariants) {
+        foreach ($sz in $FontSizeVariants) {
+            $outputBase = if ($sz.Suffix) { $sf.Base + $sz.Suffix } else { $sf.Base }
+            & (Join-Path $scriptDir "Generate-SystemFont.ps1") -FontKey $sf.Key -OutputBase $outputBase -Scale $sz.Scale
         }
     }
     if ($DebugHR) {

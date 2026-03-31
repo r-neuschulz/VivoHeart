@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="512" height="512" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape">
+  <defs/>
+  <g inkscape:groupmode="layer" inkscape:label="Image" id="g1">
+    <!-- font-size 160px; 128px cell spacing so wide fonts (e.g. Rockwell) don't overlap -->
+    <text id="text11" x="8" y="157" style="font-size:160px;font-family:'{{FONT_FAMILY}}';fill:#ffffff;stroke:#010101;stroke-width:1"><tspan id="tspan11" x="8" y="157">4</tspan></text>
+    <text id="text12" x="136" y="157" style="font-size:160px;font-family:'{{FONT_FAMILY}}';fill:#ffffff;stroke:#010101;stroke-width:1"><tspan id="tspan12" x="136" y="157">3</tspan></text>
+    <text id="text13" x="264" y="157" style="font-size:160px;font-family:'{{FONT_FAMILY}}';fill:#ffffff;stroke:#010101;stroke-width:1"><tspan id="tspan13" x="264" y="157">0</tspan></text>
+    <text id="text14" x="384" y="157" style="font-size:160px;font-family:'{{FONT_FAMILY}}';fill:#ffffff;stroke:#010101;stroke-width:1"><tspan id="tspan14" x="392" y="157">7</tspan></text>
+    <text id="text15" x="8" y="322" style="font-size:160px;font-family:'{{FONT_FAMILY}}';fill:#ffffff;stroke:#010101;stroke-width:1"><tspan id="tspan15" x="8" y="322">8</tspan></text>
+    <text id="text16" x="136" y="322" style="font-size:160px;font-family:'{{FONT_FAMILY}}';fill:#ffffff;stroke:#010101;stroke-width:1"><tspan id="tspan16" x="136" y="322">6</tspan></text>
+    <text id="text17" x="264" y="322" style="font-size:160px;font-family:'{{FONT_FAMILY}}';fill:#ffffff;stroke:#010101;stroke-width:1"><tspan id="tspan17" x="264" y="322">2</tspan></text>
+    <text id="text18" x="384" y="322" style="font-size:160px;font-family:'{{FONT_FAMILY}}';fill:#ffffff;stroke:#010101;stroke-width:1"><tspan id="tspan18" x="392" y="322">9</tspan></text>
+    <text id="text19" x="8" y="485" style="font-size:160px;font-family:'{{FONT_FAMILY}}';fill:#ffffff;stroke:#010101;stroke-width:1"><tspan id="tspan19" x="8" y="485">5</tspan></text>
+    <text id="text20" x="136" y="485" style="font-size:160px;font-family:'{{FONT_FAMILY}}';fill:#ffffff;stroke:#010101;stroke-width:1"><tspan id="tspan20" x="136" y="485">1</tspan></text>
+  </g>
+</svg>

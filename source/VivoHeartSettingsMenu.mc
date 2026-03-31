@@ -21,6 +21,8 @@ class VivoHeartSettingsMenu extends Ui.Menu2 {
         var minutesColor = getProp("MinutesColorMode", 0);
         var barsHeight = getProp("BarsHeight", 1);
         var fontSize = getProp("FontSize", 1);
+        var fontFamily = getProp("FontFamily", 0);
+        var fontAntialias = getProp("FontAntialias", 1);
 
         addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.FontColorScheme), fontSchemeLabel(fontScheme), "FontColorScheme", {}));
         addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.BarsColorScheme), barsSchemeLabel(barsScheme), "BarsColorScheme", {}));
@@ -28,6 +30,8 @@ class VivoHeartSettingsMenu extends Ui.Menu2 {
         addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.BarsGap), barsGapLabel(barsGap), "BarsGap", {}));
         addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.BarsHeight), barsHeightLabel(barsHeight), "BarsHeight", {}));
         addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.FontSize), fontSizeLabel(fontSize), "FontSize", {}));
+        addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.FontFamily), fontFamilyLabel(fontFamily), "FontFamily", {}));
+        addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.FontAntialias), fontAntialiasLabel(fontAntialias), "FontAntialias", {}));
         addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.TimePosition), timePosLabel(timePos), "TimePosition", {}));
         addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.TimeLayout), timeLayoutLabel(timeLayout), "TimeLayout", {}));
         addItem(new Ui.MenuItem(Ui.loadResource(Rez.Strings.MinutesColorMode), minutesColorLabel(minutesColor), "MinutesColorMode", {}));
@@ -97,5 +101,19 @@ class VivoHeartSettingsMenu extends Ui.Menu2 {
             Ui.loadResource(Rez.Strings.FontSizeExtraLarge)
         ];
         return idx >= 0 && idx < labels.size() ? labels[idx] as Lang.String : Ui.loadResource(Rez.Strings.FontSizeDefault) as Lang.String;
+    }
+
+    private function fontFamilyLabel(idx as Lang.Number) as Lang.String {
+        var labels = [
+            Ui.loadResource(Rez.Strings.FontFamilyProtomolecule),
+            Ui.loadResource(Rez.Strings.FontFamilyOcrExtended),
+            Ui.loadResource(Rez.Strings.FontFamilyRockwellExtraBold),
+            Ui.loadResource(Rez.Strings.FontFamilySansBold)
+        ];
+        return idx >= 0 && idx < labels.size() ? labels[idx] as Lang.String : Ui.loadResource(Rez.Strings.FontFamilyProtomolecule) as Lang.String;
+    }
+
+    private function fontAntialiasLabel(idx as Lang.Number) as Lang.String {
+        return (idx == 1) ? Ui.loadResource(Rez.Strings.FontAntialiasOn) as Lang.String : Ui.loadResource(Rez.Strings.FontAntialiasOff) as Lang.String;
     }
 }

@@ -64,4 +64,18 @@
             <listEntry value="3">@Strings.FontSizeExtraLarge</listEntry>
         </settingConfig>
     </setting>
+    <setting propertyKey="@Properties.FontFamily" title="@Strings.FontFamily">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.FontFamilyProtomolecule</listEntry>
+            <listEntry value="1">@Strings.FontFamilyOcrExtended</listEntry>
+            <listEntry value="2">@Strings.FontFamilyRockwellExtraBold</listEntry>
+            <listEntry value="3">@Strings.FontFamilySansBold</listEntry>
+        </settingConfig>
+    </setting>
+    <setting propertyKey="@Properties.FontAntialias" title="@Strings.FontAntialias">
+        <settingConfig type="list">
+            <listEntry value="0">@Strings.FontAntialiasOff</listEntry>
+            <listEntry value="1">@Strings.FontAntialiasOn</listEntry>
+        </settingConfig>
+    </setting>
 </settings>

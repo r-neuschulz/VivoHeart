@@ -35,5 +35,13 @@
     <string id="FontSizeDefault">Default</string>
     <string id="FontSizeLarge">Large</string>
     <string id="FontSizeExtraLarge">Extra Large</string>
+    <string id="FontFamily">Font</string>
+    <string id="FontFamilyProtomolecule">ProtoMolecule</string>
+    <string id="FontFamilyOcrExtended">OCR Extended</string>
+    <string id="FontFamilyRockwellExtraBold">Rockwell Extra Bold</string>
+    <string id="FontFamilySansBold">Sans Bold</string>
+    <string id="FontAntialias">Font Antialias</string>
+    <string id="FontAntialiasOff">Off</string>
+    <string id="FontAntialiasOn">On</string>
     <string id="Select">Select</string>
 </strings>

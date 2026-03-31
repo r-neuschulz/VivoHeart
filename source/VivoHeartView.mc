@@ -115,6 +115,8 @@ class VivoHeartView extends Ui.WatchFace {
     private var settingMinutesColorMode as Lang.Number = 0;
     private var settingBarsHeightPercent as Lang.Number = 68;
     private var settingFontSize as Lang.Number = 1;  // 0=Small, 1=Default, 2=Large, 3=Extra Large
+    private var settingFontFamily as Lang.Number = 0;  // 0=ProtoMolecule, 1=OCR Extended, 2=Rockwell Extra Bold, 3=Sans Bold
+    private var settingFontAntialias as Lang.Number = 1;  // 0=Off, 1=On
     private var cachedIs24Hour as Lang.Boolean = true;  // from System.getDeviceSettings(); refreshed in loadSettings()/onExitSleep()
 
     //! Cached setting accessors (no property reads – values are pre-loaded).
@@ -157,39 +159,65 @@ class VivoHeartView extends Ui.WatchFace {
         else if (bh == 4) { settingBarsHeightPercent = 100; }
         else { settingBarsHeightPercent = 68; }
         settingFontSize = readNumericSetting("FontSize", 0, 3, 1);
+        settingFontFamily = readNumericSetting("FontFamily", 0, 3, 0);
+        settingFontAntialias = readNumericSetting("FontAntialias", 0, 1, 1);
         // Cache device-level is24Hour (avoids allocating DeviceSettings every frame)
         cachedIs24Hour = System.getDeviceSettings().is24Hour;
         // Reload fonts when FontSize setting changes
         loadFontsForCurrentSize();
     }
 
-    //! Load fill and outline fonts for the current FontSize setting (0=Small, 1=Default, 2=Large, 3=XL).
+    //! Load fill and outline fonts for the current FontFamily, FontSize, and FontAntialias settings.
     private function loadFontsForCurrentSize() as Void {
         var sz = settingFontSize;
-        var fillRes = (sz == 0) ? Rez.Fonts.protomoleculefont_s :
-                     (sz == 2) ? Rez.Fonts.protomoleculefont_l :
-                     (sz == 3) ? Rez.Fonts.protomoleculefont_xl :
-                     Rez.Fonts.protomoleculefont;
-        var outRes = (sz == 0) ? Rez.Fonts.protomoleculefontoutline_s :
-                     (sz == 2) ? Rez.Fonts.protomoleculefontoutline_l :
-                     (sz == 3) ? Rez.Fonts.protomoleculefontoutline_xl :
-                     Rez.Fonts.protomoleculefontoutline;
-        var outThickRes = (sz == 0) ? Rez.Fonts.protomoleculefontoutlinethick_s :
-                         (sz == 2) ? Rez.Fonts.protomoleculefontoutlinethick_l :
-                         (sz == 3) ? Rez.Fonts.protomoleculefontoutlinethick_xl :
-                         Rez.Fonts.protomoleculefontoutlinethick;
+        var fam = settingFontFamily;
+        var aa = settingFontAntialias;
+        var fillRes;
+        var outRes;
+        var outThickRes;
+
+        if (fam == 0) {
+            // ProtoMolecule: fill + outline + outline_thick
+            fillRes = (sz == 0) ? Rez.Fonts.protomoleculefont_s : (sz == 2) ? Rez.Fonts.protomoleculefont_l : (sz == 3) ? Rez.Fonts.protomoleculefont_xl : Rez.Fonts.protomoleculefont;
+            if (aa == 0) { fillRes = (sz == 0) ? Rez.Fonts.protomoleculefont_s_noaa : (sz == 2) ? Rez.Fonts.protomoleculefont_l_noaa : (sz == 3) ? Rez.Fonts.protomoleculefont_xl_noaa : Rez.Fonts.protomoleculefont_noaa; }
+            outRes = (sz == 0) ? Rez.Fonts.protomoleculefontoutline_s : (sz == 2) ? Rez.Fonts.protomoleculefontoutline_l : (sz == 3) ? Rez.Fonts.protomoleculefontoutline_xl : Rez.Fonts.protomoleculefontoutline;
+            if (aa == 0) { outRes = (sz == 0) ? Rez.Fonts.protomoleculefontoutline_s_noaa : (sz == 2) ? Rez.Fonts.protomoleculefontoutline_l_noaa : (sz == 3) ? Rez.Fonts.protomoleculefontoutline_xl_noaa : Rez.Fonts.protomoleculefontoutline_noaa; }
+            outThickRes = (sz == 0) ? Rez.Fonts.protomoleculefontoutlinethick_s : (sz == 2) ? Rez.Fonts.protomoleculefontoutlinethick_l : (sz == 3) ? Rez.Fonts.protomoleculefontoutlinethick_xl : Rez.Fonts.protomoleculefontoutlinethick;
+            if (aa == 0) { outThickRes = (sz == 0) ? Rez.Fonts.protomoleculefontoutlinethick_s_noaa : (sz == 2) ? Rez.Fonts.protomoleculefontoutlinethick_l_noaa : (sz == 3) ? Rez.Fonts.protomoleculefontoutlinethick_xl_noaa : Rez.Fonts.protomoleculefontoutlinethick_noaa; }
+        } else {
+            // OCR Extended, Rockwell Extra Bold, Sans Bold: fill + outline + outline_thick
+            fillRes = (fam == 1) ? ((sz == 0) ? Rez.Fonts.ocrextendedfont_s : (sz == 2) ? Rez.Fonts.ocrextendedfont_l : (sz == 3) ? Rez.Fonts.ocrextendedfont_xl : Rez.Fonts.ocrextendedfont)
+                : (fam == 2) ? ((sz == 0) ? Rez.Fonts.rockwellextraboldfont_s : (sz == 2) ? Rez.Fonts.rockwellextraboldfont_l : (sz == 3) ? Rez.Fonts.rockwellextraboldfont_xl : Rez.Fonts.rockwellextraboldfont)
+                : ((sz == 0) ? Rez.Fonts.sansboldfont_s : (sz == 2) ? Rez.Fonts.sansboldfont_l : (sz == 3) ? Rez.Fonts.sansboldfont_xl : Rez.Fonts.sansboldfont);
+            if (aa == 0) {
+                fillRes = (fam == 1) ? ((sz == 0) ? Rez.Fonts.ocrextendedfont_s_noaa : (sz == 2) ? Rez.Fonts.ocrextendedfont_l_noaa : (sz == 3) ? Rez.Fonts.ocrextendedfont_xl_noaa : Rez.Fonts.ocrextendedfont_noaa)
+                    : (fam == 2) ? ((sz == 0) ? Rez.Fonts.rockwellextraboldfont_s_noaa : (sz == 2) ? Rez.Fonts.rockwellextraboldfont_l_noaa : (sz == 3) ? Rez.Fonts.rockwellextraboldfont_xl_noaa : Rez.Fonts.rockwellextraboldfont_noaa)
+                    : ((sz == 0) ? Rez.Fonts.sansboldfont_s_noaa : (sz == 2) ? Rez.Fonts.sansboldfont_l_noaa : (sz == 3) ? Rez.Fonts.sansboldfont_xl_noaa : Rez.Fonts.sansboldfont_noaa);
+            }
+            outRes = (fam == 1) ? ((sz == 0) ? Rez.Fonts.ocrextendedfontoutline_s : (sz == 2) ? Rez.Fonts.ocrextendedfontoutline_l : (sz == 3) ? Rez.Fonts.ocrextendedfontoutline_xl : Rez.Fonts.ocrextendedfontoutline)
+                : (fam == 2) ? ((sz == 0) ? Rez.Fonts.rockwellextraboldfontoutline_s : (sz == 2) ? Rez.Fonts.rockwellextraboldfontoutline_l : (sz == 3) ? Rez.Fonts.rockwellextraboldfontoutline_xl : Rez.Fonts.rockwellextraboldfontoutline)
+                : ((sz == 0) ? Rez.Fonts.sansboldfontoutline_s : (sz == 2) ? Rez.Fonts.sansboldfontoutline_l : (sz == 3) ? Rez.Fonts.sansboldfontoutline_xl : Rez.Fonts.sansboldfontoutline);
+            if (aa == 0) {
+                outRes = (fam == 1) ? ((sz == 0) ? Rez.Fonts.ocrextendedfontoutline_s_noaa : (sz == 2) ? Rez.Fonts.ocrextendedfontoutline_l_noaa : (sz == 3) ? Rez.Fonts.ocrextendedfontoutline_xl_noaa : Rez.Fonts.ocrextendedfontoutline_noaa)
+                    : (fam == 2) ? ((sz == 0) ? Rez.Fonts.rockwellextraboldfontoutline_s_noaa : (sz == 2) ? Rez.Fonts.rockwellextraboldfontoutline_l_noaa : (sz == 3) ? Rez.Fonts.rockwellextraboldfontoutline_xl_noaa : Rez.Fonts.rockwellextraboldfontoutline_noaa)
+                    : ((sz == 0) ? Rez.Fonts.sansboldfontoutline_s_noaa : (sz == 2) ? Rez.Fonts.sansboldfontoutline_l_noaa : (sz == 3) ? Rez.Fonts.sansboldfontoutline_xl_noaa : Rez.Fonts.sansboldfontoutline_noaa);
+            }
+            outThickRes = (fam == 1) ? ((sz == 0) ? Rez.Fonts.ocrextendedfontoutlinethick_s : (sz == 2) ? Rez.Fonts.ocrextendedfontoutlinethick_l : (sz == 3) ? Rez.Fonts.ocrextendedfontoutlinethick_xl : Rez.Fonts.ocrextendedfontoutlinethick)
+                : (fam == 2) ? ((sz == 0) ? Rez.Fonts.rockwellextraboldfontoutlinethick_s : (sz == 2) ? Rez.Fonts.rockwellextraboldfontoutlinethick_l : (sz == 3) ? Rez.Fonts.rockwellextraboldfontoutlinethick_xl : Rez.Fonts.rockwellextraboldfontoutlinethick)
+                : ((sz == 0) ? Rez.Fonts.sansboldfontoutlinethick_s : (sz == 2) ? Rez.Fonts.sansboldfontoutlinethick_l : (sz == 3) ? Rez.Fonts.sansboldfontoutlinethick_xl : Rez.Fonts.sansboldfontoutlinethick);
+            if (aa == 0) {
+                outThickRes = (fam == 1) ? ((sz == 0) ? Rez.Fonts.ocrextendedfontoutlinethick_s_noaa : (sz == 2) ? Rez.Fonts.ocrextendedfontoutlinethick_l_noaa : (sz == 3) ? Rez.Fonts.ocrextendedfontoutlinethick_xl_noaa : Rez.Fonts.ocrextendedfontoutlinethick_noaa)
+                    : (fam == 2) ? ((sz == 0) ? Rez.Fonts.rockwellextraboldfontoutlinethick_s_noaa : (sz == 2) ? Rez.Fonts.rockwellextraboldfontoutlinethick_l_noaa : (sz == 3) ? Rez.Fonts.rockwellextraboldfontoutlinethick_xl_noaa : Rez.Fonts.rockwellextraboldfontoutlinethick_noaa)
+                    : ((sz == 0) ? Rez.Fonts.sansboldfontoutlinethick_s_noaa : (sz == 2) ? Rez.Fonts.sansboldfontoutlinethick_l_noaa : (sz == 3) ? Rez.Fonts.sansboldfontoutlinethick_xl_noaa : Rez.Fonts.sansboldfontoutlinethick_noaa);
+            }
+        }
+
         var loadedFont = Ui.loadResource(fillRes);
-        if (loadedFont != null) {
-            bigNumProtomolecule = loadedFont as Gfx.FontReference;
-        }
+        if (loadedFont != null) { bigNumProtomolecule = loadedFont as Gfx.FontReference; }
         var loadedOutline = Ui.loadResource(outRes);
-        if (loadedOutline != null) {
-            bigNumProtomoleculeOutline = loadedOutline as Gfx.FontReference;
-        }
+        if (loadedOutline != null) { bigNumProtomoleculeOutline = loadedOutline as Gfx.FontReference; }
         var loadedOutlineThick = Ui.loadResource(outThickRes);
-        if (loadedOutlineThick != null) {
-            bigNumProtomoleculeOutlineThick = loadedOutlineThick as Gfx.FontReference;
-        }
+        if (loadedOutlineThick != null) { bigNumProtomoleculeOutlineThick = loadedOutlineThick as Gfx.FontReference; }
     }
 
     //! Read a numeric setting with range validation and fallback default.
