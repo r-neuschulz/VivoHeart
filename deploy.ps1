@@ -1,5 +1,5 @@
 # Build and deploy VivoHeart watchface to connected Garmin watch
-# Supports all 454x454 round AMOLED watches (same resolution as Epix 2 Pro 51mm)
+# Supports the round AMOLED watches listed in manifest.xml (360/390/416/454 px)
 
 param(
     [string]$KeyPath = "developer_key.der",
@@ -37,70 +37,109 @@ $SystemFontVariants = @(
     @{ Key = "Sans Bold"; Base = "SansBold" }
 )
 
-# 454x454 round AMOLED devices (same resolution, single build)
-$SupportedDevices = @(
-    "epix2pro51mm", "approachs7047mm", "descentmk351mm",
-    "fenix847mm", "fr57047mm", "fr965", "fr970",
-    "venu3"
-)
+# Fonts are designed for 454 px screens (resources/fonts). Other resolutions get the same
+# fonts scaled by width/454 in resources-round-WxH/fonts, which the compiler picks up as a
+# device-qualified override of resources/fonts.
+$BaseResolution = 454
+
+# Supported devices come from manifest.xml (single source of truth)
+[xml]$manifestXml = Get-Content (Join-Path $PSScriptRoot "manifest.xml") -Raw
+$SupportedDevices = @($manifestXml.manifest.application.products.product | ForEach-Object { $_.id })
+
+$sdkConfigPath = "$env:APPDATA\Garmin\ConnectIQ\current-sdk.cfg"
+$devicesDir = "$env:APPDATA\Garmin\ConnectIQ\Devices"
+
+function Get-DeviceWidth([string]$deviceId) {
+    $cj = Join-Path $devicesDir "$deviceId\compiler.json"
+    if (-not (Test-Path $cj)) { throw "Device '$deviceId' not installed in SDK Manager ($cj missing)" }
+    return [int](Get-Content $cj -Raw | ConvertFrom-Json).resolution.width
+}
+
 if ($ListDevices) {
-    Write-Host "Supported devices (454x454):" -ForegroundColor Cyan
-    $SupportedDevices | ForEach-Object { Write-Host "  $_" }
+    Write-Host "Supported devices:" -ForegroundColor Cyan
+    $SupportedDevices | ForEach-Object { Write-Host ("  {0,-22} {1}px" -f $_, (Get-DeviceWidth $_)) }
     exit 0
 }
 
-# --- Production build (.iq package for Connect IQ Store) ---
-if ($Production) {
-    $sdkConfig = "$env:APPDATA\Garmin\ConnectIQ\current-sdk.cfg"
-    if (-not (Test-Path $sdkConfig)) {
-        Write-Host "Connect IQ SDK not found. Install from: https://developer.garmin.com/connect-iq/sdk/" -ForegroundColor Red
-        exit 1
-    }
-    $sdkPath = (Get-Content $sdkConfig -Raw).Trim()
-    $monkeyc = Join-Path $sdkPath "bin\monkeyc.bat"
-    if (-not (Test-Path $monkeyc)) {
-        Write-Host "monkeyc not found at: $monkeyc" -ForegroundColor Red
-        exit 1
-    }
-    $keyBase = if ([System.IO.Path]::IsPathRooted($KeyPath)) { $KeyPath } else { Join-Path $PSScriptRoot $KeyPath }
-    $keyFile = $null
-    foreach ($p in @($keyBase, $keyBase + ".der", $keyBase + ".pem", (Join-Path $PSScriptRoot "developer_key.der"), (Join-Path $PSScriptRoot "developer_key.pem"))) {
-        if (Test-Path $p) { $keyFile = (Resolve-Path $p).Path; break }
-    }
-    if (-not $keyFile) {
-        Write-Host "Developer key not found. Create with VS Code Monkey C extension or: openssl genrsa -out developer_key.pem 4096" -ForegroundColor Red
-        exit 1
-    }
-    $iqOutput = Join-Path $PSScriptRoot "VivoHeart.iq"
-    $junglePath = Join-Path $PSScriptRoot "monkey.jungle"
+# Generate every font variant for one screen width. Skips the work when the inputs
+# (generator scripts, source SVGs, fonts.xml, scale) are unchanged since the last run.
+function Build-FontsForWidth([int]$width) {
     $scriptDir = Join-Path $PSScriptRoot "scripts"
-    # Font size variants: generate fill, outline, outline_thick for each size (bboxes from actual glyphs)
-    $fontsDir = Join-Path $PSScriptRoot "resources\fonts"
-    $sourceSvg = Join-Path $fontsDir "ProtoMolecule_0.svg"
+    $srcDir = Join-Path $PSScriptRoot "resources\fonts"
+    $outDir = if ($width -eq $BaseResolution) { $srcDir } else { Join-Path $PSScriptRoot "resources-round-${width}x${width}\fonts" }
+    if (-not (Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }
+    $resScale = $width / $BaseResolution
+
+    $inputs = @(Get-ChildItem $scriptDir -Filter "Generate-*.ps1") + @(Get-ChildItem $srcDir -Filter "*.svg") + @(Get-Item (Join-Path $srcDir "fonts.xml"))
+    $hashes = ($inputs | Sort-Object Name | ForEach-Object { (Get-FileHash $_.FullName -Algorithm SHA256).Hash }) -join ""
+    $stampValue = "$hashes|$resScale"
+    $stampFile = Join-Path $outDir ".fontstamp"
+    if ((Test-Path $stampFile) -and ((Get-Content $stampFile -Raw).Trim() -eq $stampValue)) {
+        Write-Host "Fonts for ${width}px up to date." -ForegroundColor DarkGray
+        return
+    }
+    Write-Host "Generating fonts for ${width}px (scale $([Math]::Round($resScale, 3)))..." -ForegroundColor Cyan
+    if ($outDir -ne $srcDir) { Copy-Item (Join-Path $srcDir "fonts.xml") $outDir -Force }
+    $sourceSvg = Join-Path $srcDir "ProtoMolecule_0.svg"
     foreach ($sz in $FontSizeVariants) {
         $sfx = $sz.Suffix
+        $scale = $sz.Scale * $resScale
         $fillPng = "ProtoMolecule_0$sfx.png"
         $fillFnt = "ProtoMolecule$sfx.fnt"
-        & (Join-Path $scriptDir "Generate-FillFont.ps1") -OutputPng $fillPng -Scale $sz.Scale
-        & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -SourceSvg $sourceSvg -OutputFnt $fillFnt -PageFile $fillPng -Scale $sz.Scale
+        & (Join-Path $scriptDir "Generate-FillFont.ps1") -OutputPng $fillPng -Scale $scale -SourceDir $srcDir -FontsDir $outDir
+        & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -SourceSvg $sourceSvg -OutputFnt $fillFnt -PageFile $fillPng -Scale $scale -FontsDir $outDir
         foreach ($v in $FontOutlineVariants) {
             $outPng = $v.Png -replace '\.png$', "$sfx.png"
             $outFnt = $v.Fnt -replace '\.fnt$', "$sfx.fnt"
             $variantName = if ($v.Outside -eq 8) { "thick" } else { "outline" }
-            $tempOutlineSvg = Join-Path $fontsDir "ProtoMolecule_${variantName}_temp$sfx.svg"
-            & (Join-Path $scriptDir "Generate-OutlineFont.ps1") -Outside $v.Outside -Inside $v.Inside -OutputPng $outPng -Scale $sz.Scale -TempSvgPath $tempOutlineSvg
-            & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -SourceSvg $tempOutlineSvg -OutputFnt $outFnt -PageFile $outPng -Scale $sz.Scale
+            $tempOutlineSvg = Join-Path $outDir "ProtoMolecule_${variantName}_temp$sfx.svg"
+            & (Join-Path $scriptDir "Generate-OutlineFont.ps1") -Outside $v.Outside -Inside $v.Inside -OutputPng $outPng -Scale $scale -TempSvgPath $tempOutlineSvg -SourceDir $srcDir -FontsDir $outDir
+            & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -SourceSvg $tempOutlineSvg -OutputFnt $outFnt -PageFile $outPng -Scale $scale -FontsDir $outDir
             Remove-Item $tempOutlineSvg -ErrorAction SilentlyContinue
         }
     }
-    # Generate alternate system fonts (OCR Extended, Rockwell Extra Bold, Sans Bold)
+    # Alternate system fonts (OCR Extended, Rockwell Extra Bold, Sans Bold)
     foreach ($sf in $SystemFontVariants) {
         foreach ($sz in $FontSizeVariants) {
             $outputBase = if ($sz.Suffix) { $sf.Base + $sz.Suffix } else { $sf.Base }
-            & (Join-Path $scriptDir "Generate-SystemFont.ps1") -FontKey $sf.Key -OutputBase $outputBase -Scale $sz.Scale
+            & (Join-Path $scriptDir "Generate-SystemFont.ps1") -FontKey $sf.Key -OutputBase $outputBase -Scale ($sz.Scale * $resScale) -SourceDir $srcDir -FontsDir $outDir
         }
     }
-    Write-Host "Building production .iq package for Connect IQ Store..." -ForegroundColor Green
+    Set-Content -Path $stampFile -Value $stampValue -Encoding ASCII
+}
+
+# Base (454 px) fonts are always needed: the compiler validates resources/fonts for every device.
+function Build-Fonts([string[]]$devices) {
+    $widths = @($BaseResolution) + @($devices | ForEach-Object { Get-DeviceWidth $_ }) | Sort-Object -Unique -Descending
+    foreach ($w in $widths) { Build-FontsForWidth $w }
+}
+
+function Get-SdkPath {
+    if (-not (Test-Path $sdkConfigPath)) {
+        Write-Host "Connect IQ SDK not found. Install from: https://developer.garmin.com/connect-iq/sdk/" -ForegroundColor Red
+        exit 1
+    }
+    return (Get-Content $sdkConfigPath -Raw).Trim()
+}
+
+function Get-KeyFile {
+    $keyBase = if ([System.IO.Path]::IsPathRooted($KeyPath)) { $KeyPath } else { Join-Path $PSScriptRoot $KeyPath }
+    foreach ($p in @($keyBase, $keyBase + ".der", $keyBase + ".pem", (Join-Path $PSScriptRoot "developer_key.der"), (Join-Path $PSScriptRoot "developer_key.pem"))) {
+        if (Test-Path $p) { return (Resolve-Path $p).Path }
+    }
+    Write-Host "Developer key not found. Create with VS Code Monkey C extension or: openssl genrsa -out developer_key.pem 4096" -ForegroundColor Red
+    exit 1
+}
+
+# --- Production build (.iq package for Connect IQ Store) ---
+if ($Production) {
+    $sdkPath = Get-SdkPath
+    $monkeyc = Join-Path $sdkPath "bin\monkeyc.bat"
+    $keyFile = Get-KeyFile
+    $iqOutput = Join-Path $PSScriptRoot "VivoHeart.iq"
+    $junglePath = Join-Path $PSScriptRoot "monkey.jungle"
+    Build-Fonts $SupportedDevices
+    Write-Host "Building production .iq package for Connect IQ Store ($($SupportedDevices.Count) devices)..." -ForegroundColor Green
     & $monkeyc -f $junglePath -e -o $iqOutput -y $keyFile -O 3 -r
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     Write-Host "IQ package ready: $iqOutput" -ForegroundColor Green
@@ -115,58 +154,17 @@ $settingsJsonPath = Join-Path $prgDir $settingsJsonName
 
 # --- Build ---
 if (-not $NoBuild) {
-    $sdkConfig = "$env:APPDATA\Garmin\ConnectIQ\current-sdk.cfg"
-    if (-not (Test-Path $sdkConfig)) {
-        Write-Host "Connect IQ SDK not found. Install from: https://developer.garmin.com/connect-iq/sdk/" -ForegroundColor Red
-        exit 1
-    }
-
-    $sdkPath = (Get-Content $sdkConfig -Raw).Trim()
+    $sdkPath = Get-SdkPath
     $monkeyc = Join-Path $sdkPath "bin\monkeyc.bat"
     if (-not (Test-Path $monkeyc)) {
         Write-Host "monkeyc not found at: $monkeyc" -ForegroundColor Red
         exit 1
     }
-
-    $keyBase = if ([System.IO.Path]::IsPathRooted($KeyPath)) { $KeyPath } else { Join-Path $PSScriptRoot $KeyPath }
-    $keyFile = $null
-    foreach ($p in @($keyBase, $keyBase + ".der", $keyBase + ".pem", (Join-Path $PSScriptRoot "developer_key.der"), (Join-Path $PSScriptRoot "developer_key.pem"))) {
-        if (Test-Path $p) { $keyFile = (Resolve-Path $p).Path; break }
-    }
-    if (-not $keyFile) {
-        Write-Host "Developer key not found. Create with VS Code Monkey C extension or: openssl genrsa -out developer_key.pem 4096" -ForegroundColor Red
-        exit 1
-    }
+    $keyFile = Get-KeyFile
 
     $jungleFile = if ($DebugHR) { "monkey.debug.jungle" } else { "monkey.jungle" }
     $junglePath = Join-Path $PSScriptRoot $jungleFile
-    $scriptDir = Join-Path $PSScriptRoot "scripts"
-    # Font size variants: generate fill, outline, outline_thick for each size (bboxes from actual glyphs)
-    $fontsDir = Join-Path $PSScriptRoot "resources\fonts"
-    $sourceSvg = Join-Path $fontsDir "ProtoMolecule_0.svg"
-    foreach ($sz in $FontSizeVariants) {
-        $sfx = $sz.Suffix
-        $fillPng = "ProtoMolecule_0$sfx.png"
-        $fillFnt = "ProtoMolecule$sfx.fnt"
-        & (Join-Path $scriptDir "Generate-FillFont.ps1") -OutputPng $fillPng -Scale $sz.Scale
-        & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -SourceSvg $sourceSvg -OutputFnt $fillFnt -PageFile $fillPng -Scale $sz.Scale
-        foreach ($v in $FontOutlineVariants) {
-            $outPng = $v.Png -replace '\.png$', "$sfx.png"
-            $outFnt = $v.Fnt -replace '\.fnt$', "$sfx.fnt"
-            $variantName = if ($v.Outside -eq 8) { "thick" } else { "outline" }
-            $tempOutlineSvg = Join-Path $fontsDir "ProtoMolecule_${variantName}_temp$sfx.svg"
-            & (Join-Path $scriptDir "Generate-OutlineFont.ps1") -Outside $v.Outside -Inside $v.Inside -OutputPng $outPng -Scale $sz.Scale -TempSvgPath $tempOutlineSvg
-            & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -SourceSvg $tempOutlineSvg -OutputFnt $outFnt -PageFile $outPng -Scale $sz.Scale
-            Remove-Item $tempOutlineSvg -ErrorAction SilentlyContinue
-        }
-    }
-    # Generate alternate system fonts (OCR Extended, Rockwell Extra Bold, Sans Bold)
-    foreach ($sf in $SystemFontVariants) {
-        foreach ($sz in $FontSizeVariants) {
-            $outputBase = if ($sz.Suffix) { $sf.Base + $sz.Suffix } else { $sf.Base }
-            & (Join-Path $scriptDir "Generate-SystemFont.ps1") -FontKey $sf.Key -OutputBase $outputBase -Scale $sz.Scale
-        }
-    }
+    Build-Fonts @($Device)
     if ($DebugHR) {
         Write-Host "Building for $Device (DEBUG HR - synthetic data)..." -ForegroundColor Yellow
     } else {

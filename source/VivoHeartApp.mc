@@ -21,9 +21,15 @@ class VivoHeartApp extends App.AppBase {
 
     // Return the initial view of your application here
     function getInitialView() as [Ui.Views] or [Ui.Views, Ui.InputDelegates] {
-        vivoHeartView = new VivoHeartView();
+        vivoHeartView = makeView();
         return [ vivoHeartView ];
     }
+
+    (:nobench)
+    private function makeView() as VivoHeartView { return new VivoHeartView(); }
+
+    (:bench)
+    private function makeView() as VivoHeartView { return new VivoHeartBenchView(); }
 
     // Return the settings view for "Customize" / "Trigger App Settings"
     function getSettingsView() as [Ui.Views] or [Ui.Views, Ui.InputDelegates] or Null {

@@ -59,6 +59,9 @@ resources/cache/
 # Fonts generated at build from .svg (rects in FNT Bounds layer)
 resources/fonts/*.fnt
 resources/fonts/*.png
+resources/fonts/.fontstamp
+# Per-resolution scaled fonts (deploy.ps1 generates them from resources/fonts)
+resources-round-*/
 
 # Test Files
 test_*.prg

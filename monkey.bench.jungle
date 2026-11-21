@@ -1,0 +1,5 @@
+project.manifest = manifest.xml
+base.sourcePath = source
+base.resourcePath = resources
+# Benchmark build: production data path + VivoHeartBenchView (see source/VivoHeartBenchView.mc)
+base.excludeAnnotations = debugHrData;nobench
