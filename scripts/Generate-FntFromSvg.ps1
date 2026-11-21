@@ -35,6 +35,12 @@ $inkscape = $null
 foreach ($p in $inkscapePaths) {
     if ($p -and (Test-Path $p -ErrorAction SilentlyContinue)) { $inkscape = $p; break }
 }
+# inkscape.exe is a GUI-subsystem binary: PowerShell cannot capture its stdout (--query-all returns nothing).
+# The inkscape.com console wrapper next to it can.
+if ($inkscape -and $inkscape -like "*.exe") {
+    $inkscapeCom = [System.IO.Path]::ChangeExtension($inkscape, ".com")
+    if (Test-Path $inkscapeCom) { $inkscape = $inkscapeCom }
+}
 if (-not $inkscape) {
     Write-Host "Inkscape not found. Install from https://inkscape.org or add to PATH." -ForegroundColor Red
     exit 1

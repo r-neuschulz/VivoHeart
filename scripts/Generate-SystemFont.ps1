@@ -7,6 +7,7 @@ param(
     [string]$FontKey,
     [string]$OutputBase,
     [double]$Scale = 1.0,
+    [string]$SourceDir = (Join-Path $PSScriptRoot "..esourcesonts"),  # where the source SVG/template lives
     [string]$FontsDir = (Join-Path $PSScriptRoot "..\resources\fonts")
 )
 
@@ -22,7 +23,7 @@ $FontDisplayNames = @{
 }
 $fontDisplayName = if ($FontDisplayNames.ContainsKey($FontKey)) { $FontDisplayNames[$FontKey] } else { $FontKey }
 
-$templatePath = Join-Path $FontsDir "SystemFontTemplate.svg"
+$templatePath = Join-Path (Resolve-Path $SourceDir).Path "SystemFontTemplate.svg"
 if (-not (Test-Path $templatePath)) {
     Write-Host "Template not found: $templatePath" -ForegroundColor Red
     exit 1
@@ -38,6 +39,12 @@ $inkscapePaths = @(
 $inkscape = $null
 foreach ($p in $inkscapePaths) {
     if ($p -and (Test-Path $p -ErrorAction SilentlyContinue)) { $inkscape = $p; break }
+}
+# inkscape.exe is a GUI-subsystem binary: PowerShell cannot capture its stdout (--query-all returns nothing).
+# The inkscape.com console wrapper next to it can.
+if ($inkscape -and $inkscape -like "*.exe") {
+    $inkscapeCom = [System.IO.Path]::ChangeExtension($inkscape, ".com")
+    if (Test-Path $inkscapeCom) { $inkscape = $inkscapeCom }
 }
 if (-not $inkscape) {
     Write-Host "Inkscape not found." -ForegroundColor Red
@@ -57,7 +64,7 @@ function Export-SystemFontVariant {
         Remove-Item $tempSvg -ErrorAction SilentlyContinue
         return $false
     }
-    & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -SourceSvg $tempSvg -OutputFnt $FntName -PageFile $PngName -Scale $Scale 2>&1 | Out-Null
+    & (Join-Path $scriptDir "Generate-FntFromSvg.ps1") -SourceSvg $tempSvg -OutputFnt $FntName -PageFile $PngName -Scale $Scale -FontsDir $FontsDir 2>&1 | Out-Null
     Remove-Item $tempSvg -ErrorAction SilentlyContinue
     return $true
 }
@@ -66,7 +73,7 @@ function Export-SystemFontVariant {
 $content = Get-Content -Path $templatePath -Raw -Encoding UTF8
 $content = $content -replace '\{\{FONT_FAMILY\}\}', $fontDisplayName
 if (-not (Export-SystemFontVariant -Content $content -PngName "${OutputBase}.png" -FntName "${OutputBase}.fnt")) {
-    Write-Host "Skipping $OutputBase: font '$fontDisplayName' may not be installed or export failed." -ForegroundColor Yellow
+    Write-Host "Skipping ${OutputBase}: font '$fontDisplayName' may not be installed or export failed." -ForegroundColor Yellow
     exit 0
 }
 
