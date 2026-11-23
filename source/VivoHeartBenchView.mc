@@ -13,7 +13,10 @@ using Toybox.ActivityMonitor as Act;
 (:bench)
 class VivoHeartBenchView extends VivoHeartView {
 
-    private const FRAMES_PER_SCENARIO = 6;
+    // 1 warm-up frame (cache fills, bitmap allocation) + 1 measured frame per scenario.
+    // Kept small for real watches, where 1 Hz updates last only ~10 s per wrist raise and
+    // then drop to one per minute.
+    private const FRAMES_PER_SCENARIO = 2;
     private var iterations as Lang.Number = 20;   // per onUpdate; scaled per scenario below
     private var frame as Lang.Number = 0;
     private var totals as Lang.Array = [] as Lang.Array;
@@ -21,13 +24,13 @@ class VivoHeartBenchView extends VivoHeartView {
     private var names as Lang.Array = [
         "steady_frame",       // 1 Hz high-power frame, nothing changed
         "minute_change",      // time strings + any per-minute work invalidated
-        "data_refresh",       // new HR samples: bar rebuild + graph re-render
+        "data_refresh",       // new HR samples: cached bars re-rendered + frame
         "bars_on_top",        // steady frame with BarsPosition = bars on top
         "low_power_frame",    // always-on frame
         "hr_lookup_actmon",   // ActivityMonitor.getHeartRateHistory(1)
         "hr_lookup_activity", // Activity.getActivityInfo().currentHeartRate
-        "sensor_fetch_6h",    // SensorHistory 6 h fetch + parse (simulator data)
-        "op_rebuild_bars",    // slot values -> bar geometry only
+        "sensor_fetch_6h",    // full fetch: empty ring, 6 h of SensorHistory
+        "sensor_fetch_incr",  // incremental fetch: one slot rolled over
         "op_screen_clear",
         "op_screen_bars",
         "op_screen_text",     // thick outline + fill, hour + minute
@@ -72,24 +75,28 @@ class VivoHeartBenchView extends VivoHeartView {
         }
     }
 
-    //! Bin the synthetic series into slots once (same nearest-to-centre rule as the fetch).
+    //! Bin the synthetic series into the ring once (same nearest-to-centre rule as the fetch).
     private function loadSynthetic() as Void {
         var n = numBars;
-        var slotSec = PERIOD_SEC / n;
-        var half = slotSec / 2;
-        var periodStart = Time.now().value() - PERIOD_SEC;
-        var dist = new [n];
-        for (var i = 0; i < n; i++) { slotValues[i] = null; dist[i] = slotSec; }
+        var ss = slotSec;
+        var half = ss / 2;
+        var cur = Time.now().value() / ss;
+        var first = cur - n + 1;
+        for (var i = 0; i < n; i++) { slotValues[i] = null; slotDist[i] = ss; }
+        lastDataSlot = -1;
         for (var j = 0; j < synthData.size(); j++) {
-            var off = (synthTimes[j] as Lang.Number) - periodStart;
-            if (off < 0) { continue; }
-            var idx = off / slotSec;
-            if (idx >= n) { continue; }
-            var d = off - idx * slotSec - half;
+            var t = synthTimes[j] as Lang.Number;
+            var abs = t / ss;
+            if (abs < first || abs > cur) { continue; }
+            var d = t - abs * ss - half;
             if (d < 0) { d = -d; }
-            if (d < (dist[idx] as Lang.Number)) { dist[idx] = d; slotValues[idx] = synthData[j]; }
+            var k = abs % n;
+            if (d < (slotDist[k] as Lang.Number)) {
+                slotDist[k] = d; slotValues[k] = synthData[j];
+                if (abs > lastDataSlot) { lastDataSlot = abs; }
+            }
         }
-        hasSlotData = true;
+        newestSlot = cur;
         cachedDataSampleCount++;
     }
 
@@ -102,6 +109,10 @@ class VivoHeartBenchView extends VivoHeartView {
     function onUpdate(dc as Gfx.Dc) as Void {
         if (synthData.size() == 0) { buildSynthetic(); loadSynthetic(); }
         var scen = frame / FRAMES_PER_SCENARIO;
+        if (frame == 0) {
+            Sys.println("BENCH device=" + Sys.getDeviceSettings().partNumber + " fw=" + Sys.getDeviceSettings().firmwareVersion
+                + " screen=" + width + "x" + height + " bars=" + numBars);
+        }
         frame++;
         if (scen >= names.size()) {
             inject();
@@ -113,9 +124,15 @@ class VivoHeartBenchView extends VivoHeartView {
         var n = iterations;
         if (scen == 1 || scen == 2) { n = 5; }  // rebuilds are heavy; keep under watchdog
         if (scen == 7) { n = 2; }
-        if (scen >= 5 && scen <= 6) { n = 200; }
-        if (scen >= 8) { n = 10; }
+        if (scen >= 5 && scen <= 6) { n = 2000; }
         if (scen == 8) { n = 5; }
+        if (scen >= 9) { n = 10; }
+        // Hold the bars-position setting for the whole scenario: switching it recreates
+        // the cached bitmaps, which belongs in the warm-up frame, not the measurement.
+        if (settingBarsPosition != ((scen == 3) ? 1 : 0)) {
+            settingBarsPosition = (scen == 3) ? 1 : 0;
+            settingsVersion++;
+        }
         var fdc = null;
         var adc = null;
         if (scen >= 12 && scen <= 15) {
@@ -142,7 +159,7 @@ class VivoHeartBenchView extends VivoHeartView {
             } else if (scen == 2) {
                 inject(); isLowPower = false; cachedDataSampleCount++; VivoHeartView.onUpdate(dc);
             } else if (scen == 3) {
-                inject(); isLowPower = false; settingBarsPosition = 1; VivoHeartView.onUpdate(dc);
+                inject(); isLowPower = false; VivoHeartView.onUpdate(dc);
             } else if (scen == 4) {
                 inject(); isLowPower = true; VivoHeartView.onUpdate(dc);
             } else if (scen == 5) {
@@ -153,16 +170,17 @@ class VivoHeartBenchView extends VivoHeartView {
                 var info = Activity.getActivityInfo();
                 if (info != null) { sink = info.currentHeartRate; }
             } else if (scen == 7) {
-                lastFetchTime = -0x3FFFFFFF; deferFetch = false;
+                newestSlot = -1; deferFetch = false;
                 doProductionFetch();
             } else if (scen == 8) {
-                rebuildBars();
+                newestSlot = newestSlot - 1; deferFetch = false;
+                doProductionFetch();
             } else if (scen == 9 || scen == 12 || scen == 16) {
                 var cdc = (scen == 9) ? dc : (scen == 12) ? fdc : adc;
                 cdc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_BLACK);
                 cdc.clear();
             } else if (scen == 10 || scen == 13 || scen == 17) {
-                drawBars((scen == 10) ? dc : (scen == 13) ? fdc : adc, false);
+                renderBars((scen == 10) ? dc : (scen == 13) ? fdc : adc, false);
             } else if (scen == 11 || scen == 14 || scen == 18) {
                 var tdc = (scen == 11) ? dc : (scen == 14) ? fdc : adc;
                 tdc.setColor(0x050505, Gfx.COLOR_TRANSPARENT);
@@ -175,25 +193,25 @@ class VivoHeartBenchView extends VivoHeartView {
             }
         }
         var dt = Sys.getTimer() - t0;
-        settingBarsPosition = 0;
         isLowPower = false;
-        if (scen == 7) { loadSynthetic(); inject(); }
+        if (scen == 7 || scen == 8) { loadSynthetic(); inject(); }
         // Skip the first frame of each scenario (warm-up: cache fills, bitmap alloc)
         if (frame % FRAMES_PER_SCENARIO != 1) {
             totals[scen] = (totals[scen] as Lang.Number) + dt;
             counts[scen] = (counts[scen] as Lang.Number) + n;
         }
+        // Write each result as soon as its scenario finishes, so a partial run still
+        // leaves data in the device log.
+        if (frame % FRAMES_PER_SCENARIO == 0) {
+            var c = counts[scen] as Lang.Number;
+            if (c > 0) {
+                Sys.println("BENCH " + names[scen] + " us_per_call=" + ((totals[scen] as Lang.Number) * 1000 / c) + " n=" + c);
+            }
+        }
     }
 
     private function report() as Void {
         var st = Sys.getSystemStats();
-        Sys.println("BENCH device=" + Sys.getDeviceSettings().partNumber + " screen=" + width + "x" + height);
-        for (var i = 0; i < names.size(); i++) {
-            var c = counts[i] as Lang.Number;
-            if (c == 0) { continue; }
-            var us = (totals[i] as Lang.Number) * 1000 / c;
-            Sys.println("BENCH " + names[i] + " us_per_call=" + us + " n=" + c);
-        }
         Sys.println("BENCH mem_used=" + st.usedMemory + " mem_total=" + st.totalMemory);
         Sys.println("BENCH DONE");
     }

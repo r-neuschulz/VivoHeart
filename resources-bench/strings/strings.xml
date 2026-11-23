@@ -1,0 +1,4 @@
+<strings>
+    <!-- Benchmark build only (monkey.bench.jungle): distinct name in the watch face list -->
+    <string id="AppName">VH Bench</string>
+</strings>

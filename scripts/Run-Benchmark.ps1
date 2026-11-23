@@ -5,9 +5,7 @@
 #        .\scripts\Run-Benchmark.ps1 -Device epix2 -NoBuild -Prg bin\bench_epix2.prg
 #
 # Simulator timings come from the PC, not the watch: compare runs against each other,
-# not against device budgets. For on-device numbers, sideload the bench .prg, create an
-# empty GARMIN\APPS\LOGS\<PRGNAME>.TXT on the watch, let the face run ~1 minute, and read
-# that file back.
+# not against device budgets. For on-device numbers use scripts\Sideload-Test.ps1 -Kind bench.
 
 param(
     [string]$Device = "epix2pro51mm",
@@ -23,6 +21,7 @@ if (-not $Prg) { $Prg = "bin\bench_$Device.prg" }
 $prgPath = if ([System.IO.Path]::IsPathRooted($Prg)) { $Prg } else { Join-Path $root $Prg }
 
 if (-not $NoBuild) {
+    & (Join-Path $PSScriptRoot "New-TestManifest.ps1") -Kind bench
     & (Join-Path $sdkPath "bin\monkeyc.bat") -d $Device -f (Join-Path $root "monkey.bench.jungle") -o $prgPath -y (Join-Path $root "developer_key.der") -O 3
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }

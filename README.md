@@ -53,20 +53,28 @@ Round AMOLED watches at four resolutions. Fonts are designed at 454 px; `deploy.
 
 ## Performance
 
-Every high-power update draws straight to the screen: clear, up to 86 `fillRectangle` bars bucketed by zone colour, and the time. HR history is binned into one slot per bar while it is fetched (every `6 h / bars`, ~4 min), and bar geometry is rebuilt only when that data changes.
+Profiled on an epix Pro 51 mm (firmware 27.18) with the benchmark build, µs per call:
 
-Simulator benchmark, epix Pro 51 mm, µs per call (`scripts/Run-Benchmark.ps1`):
+| Path | develop (direct draw) | Now |
+|------|------:|------:|
+| 1 Hz high-power frame | 34,450 | 9,700 |
+| Always-on frame (once a minute) | 34,500 | 7,650 |
+| Bars on top, 1 Hz frame | 34,000 | 16,650 |
+| HR refresh fetch (every ~4 min) | 134,000 | 2,800 |
+| Full 6 h fetch (startup only) | 134,000 | 142,000 |
+| New HR data: bars re-rendered (every ~4 min) | 77,000 | 81,000 |
 
-| Path | Before | After |
-|------|-------:|------:|
-| 1 Hz high-power frame | 59,530 – 69,530 | 34,680 |
-| Minute change | 47,650 – 67,030 | 33,120 |
-| New HR data (fetch + rebuild + frame) | 389,040 | 52,700 |
-| Always-on frame | 35,000 | 33,600 |
+What the watch showed per operation: a full-screen blit costs 0.3 ms (opaque) or 1.3 ms (alpha), the time text 5 ms, and drawing the 86 bars 21–26 ms on screen or ~42 ms into a bitmap. So the bars are pre-rendered into a screen-sized bitmap (one for filled, one for always-on outlines) only when the data or a setting changes. With bars behind the time that bitmap is opaque, so its blit also clears the screen. HR history is kept in a ring buffer of absolute time slots, so each refresh reads only the minutes since the last one.
 
-The old path pre-rendered the bars into a full-alpha `BufferedBitmap` and blitted it each frame. Measured per operation, 86 bars cost 7 ms drawn on screen but 279 ms drawn into any `BufferedBitmap`, and the 454×454 blit alone (32 ms) costs about as much as the whole direct frame. Dropping the bitmap also frees 864 KB of graphics pool.
+The simulator gets this badly wrong (blits ~33 ms, bars ~8 ms), so don't tune from simulator numbers. On a USB-connected watch:
 
-Simulator timings come from the PC, so compare runs with each other, not with device budgets. To profile on a watch: build with `monkey.bench.jungle`, copy the `.prg` to `GARMIN\APPS`, create an empty `GARMIN\APPS\LOGS\<PRG NAME>.TXT`, select the face for about a minute, and read the `BENCH` lines from that file.
+```powershell
+.\scripts\Sideload-Test.ps1 -Kind bench          # installs "VH Bench" (own app id) + empty log file
+# select VH Bench, raise your wrist every ~10 s for a minute, reconnect
+.\scripts\Sideload-Test.ps1 -Kind bench -Fetch   # prints the BENCH lines
+```
+
+`-Kind diag` installs "VH Diag" instead, which logs every startup step for crash hunting. `scripts/Run-Benchmark.ps1` runs the same bench in the simulator.
 
 ## Screenshots
 

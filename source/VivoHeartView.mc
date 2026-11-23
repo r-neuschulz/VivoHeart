@@ -9,17 +9,16 @@ using Toybox.ActivityMonitor as Act;
 using Toybox.Time as Time;
 using Toybox.Time.Gregorian as Gregorian;
 
-//! Rendering model (see README "Performance"):
-//!  - HR samples are binned straight into fixed per-slot arrays during the sensor fetch
-//!    (no intermediate lists), one slot per bar.
-//!  - Bar geometry is rebuilt into exact-size per-zone arrays only when the slot data,
-//!    bar height setting or layout changes.
-//!  - Everything is drawn straight to the screen dc. No BufferedBitmaps: profiling showed
-//!    drawing into one costs far more than drawing the ~86 bars + time directly
-//!    (scripts/Run-Benchmark.ps1, op_* lines), and a full-screen blit alone costs about as
-//!    much as the whole direct frame.
-//!  - Always-on (low-power) frames are drawn directly: they run once a minute and must
-//!    stay under the AMOLED lit-pixel limit, so they use outlines only.
+//! Rendering model, tuned from on-device profiling (scripts/Sideload-Test.ps1 -Kind bench,
+//! epix Pro 51 mm; README "Performance"):
+//!  - On the watch a full-screen blit costs 0.3 ms (opaque) / 1.3 ms (alpha), while drawing
+//!    the ~86 bars costs ~21 ms and the time text ~5 ms. So the bars are rendered into a
+//!    screen-sized BufferedBitmap only when the HR data or a setting changes, separately for
+//!    high-power (filled) and always-on (outlined) mode, and every frame is blit + text.
+//!  - With bars behind the time the bitmap is opaque black, so its blit also clears the screen.
+//!  - HR history lives in a ring buffer of absolute time slots (slot = epoch / slotSec), so a
+//!    refresh fetches only the minutes since the last one and clears only the slots that
+//!    rolled over. A full 6 h fetch costs ~134 ms on the watch.
 class VivoHeartView extends Ui.WatchFace {
 
     //! Instance variable to store heart rate zones and font
@@ -50,22 +49,27 @@ class VivoHeartView extends Ui.WatchFace {
     private const SIDEBYSIDE_Y_RATIO_TOP = 0.354;    // single line when position=top (~70px below stacked top)
     private const SIDEBYSIDE_Y_RATIO_CENTER = 0.5;   // single line when position=centered
 
-    // HR slot data: one entry per bar, oldest on the left. null = no sample in that slot.
+    // HR ring buffer: absolute slot s (= epochSec / slotSec) lives at index s % numBars.
+    // Valid slots are newestSlot - numBars + 1 .. newestSlot; null = no sample.
     protected var slotValues as Lang.Array = [] as Lang.Array;
-    private var slotDist as Lang.Array = [] as Lang.Array;   // scratch: distance of chosen sample to slot centre
-    protected var hasSlotData as Lang.Boolean = false;
-    protected var cachedDataSampleCount as Lang.Number = 0;  // bumped whenever slotValues changes
+    protected var slotDist as Lang.Array = [] as Lang.Array;   // distance of the kept sample to the slot centre
+    protected var slotSec as Lang.Number = 251;
+    protected var newestSlot as Lang.Number = -1;               // -1 = ring empty / needs full fetch
+    protected var lastDataSlot as Lang.Number = -1;             // newest slot that holds a value
+    protected var cachedDataSampleCount as Lang.Number = 0;     // bumped whenever the ring changes
     protected var lastFetchTime as Lang.Number = 0;
 
     //! When true, skip sensor fetch on the next onUpdate to unblock the first wake frame
     protected var deferFetch as Lang.Boolean = false;
 
-    // Bar geometry, rebuilt only when slot data / height / layout change.
-    // barTop[i] = top y of bar i, or -1 when the slot is empty. zoneBars[z] = flat [x, y, h, ...].
-    private var cachedBarVersion as Lang.Number = -1;
-    private var barTop as Lang.Array = [] as Lang.Array;
-    private var zoneBars as Lang.Array = [[], [], [], [], [], []] as Lang.Array;
-    private var lastComputedHeightPct as Lang.Number = -1;
+    // Pre-rendered bars: index 0 = high power (filled), 1 = always-on (outlines).
+    // Re-rendered when the ring data or a setting changes, or the graphics pool evicted it.
+    private var hasBitmapApi as Lang.Boolean = false;
+    private var bmpRef as Lang.Array = [null, null] as Lang.Array;
+    private var bmpAlpha as Lang.Array = [false, false] as Lang.Array;  // true when created with alpha (bars on top)
+    private var bmpData as Lang.Array = [-1, -1] as Lang.Array;
+    private var bmpSettings as Lang.Array = [-1, -1] as Lang.Array;
+    protected var settingsVersion as Lang.Number = 0;
 
     // Custom colors to replace muddy Garmin defaults
     private const COLOR_VIVID_BLUE = 0x0088FF;       // bright azure (replaces dim COLOR_BLUE)
@@ -96,6 +100,7 @@ class VivoHeartView extends Ui.WatchFace {
     private var magmaDark as Lang.Array = [] as Lang.Array;
     protected var hasSensorHistory as Lang.Boolean = false;
     private var hasActivityInfo as Lang.Boolean = false;
+    private var hasActMonHistory as Lang.Boolean = false;
 
     //! True when in low-power / Always On Display mode (after onEnterSleep)
     protected var isLowPower as Lang.Boolean = false;
@@ -142,7 +147,10 @@ class VivoHeartView extends Ui.WatchFace {
         // Cache device-level is24Hour (avoids allocating DeviceSettings every frame)
         cachedIs24Hour = System.getDeviceSettings().is24Hour;
         // Reload fonts when FontSize setting changes
+        Diag.log("settings ok fam=" + settingFontFamily + " sz=" + settingFontSize + " aa=" + settingFontAntialias + " pos=" + settingBarsPosition + " layout=" + settingTimeLayout + " bh=" + settingBarsHeightPercent);
         loadFontsForCurrentSize();
+        if (height > 0) { graphHeight = height * settingBarsHeightPercent / 100; }
+        settingsVersion++;  // re-render cached bars
     }
 
     //! Load fill and outline fonts for the current FontFamily, FontSize, and FontAntialias settings.
@@ -190,11 +198,15 @@ class VivoHeartView extends Ui.WatchFace {
             }
         }
 
+        Diag.log("font fill load");
         var loadedFont = Ui.loadResource(fillRes);
+        Diag.log("font fill " + (loadedFont != null));
         if (loadedFont != null) { bigNumProtomolecule = loadedFont as Gfx.FontReference; }
         var loadedOutline = Ui.loadResource(outRes);
+        Diag.log("font outline " + (loadedOutline != null));
         if (loadedOutline != null) { bigNumProtomoleculeOutline = loadedOutline as Gfx.FontReference; }
         var loadedOutlineThick = Ui.loadResource(outThickRes);
+        Diag.log("font thick " + (loadedOutlineThick != null));
         if (loadedOutlineThick != null) { bigNumProtomoleculeOutlineThick = loadedOutlineThick as Gfx.FontReference; }
     }
 
@@ -282,10 +294,16 @@ class VivoHeartView extends Ui.WatchFace {
         return Graphics.COLOR_WHITE;
     }
 
-    //! Current HR for time colouring. Live sensor value first (cheapest, most current),
-    //! then the newest ActivityMonitor sample, then the newest graph slot.
+    //! Current HR for time colouring: newest ActivityMonitor sample (0.36 ms on the watch),
+    //! then the live sensor value (1.0 ms), then the newest graph slot.
     (:production)
     private function getCurrentHeartRateForDisplay() as Lang.Number or Null {
+        if (hasActMonHistory) {
+            var sample = Act.getHeartRateHistory(1, true).next();  // 1 sample, newest first
+            if (sample != null && sample.heartRate != null && sample.heartRate != Act.INVALID_HR_SAMPLE) {
+                return sample.heartRate;
+            }
+        }
         if (hasActivityInfo) {
             var info = Activity.getActivityInfo();
             if (info != null) {
@@ -293,15 +311,8 @@ class VivoHeartView extends Ui.WatchFace {
                 if (live != null && live > 0) { return live; }
             }
         }
-        if (Toybox has :ActivityMonitor && Toybox.ActivityMonitor has :getHeartRateHistory) {
-            var iter = Act.getHeartRateHistory(1, true);  // 1 sample, newest first
-            var sample = iter.next();
-            if (sample != null && sample.heartRate != null && sample.heartRate != Act.INVALID_HR_SAMPLE) {
-                return sample.heartRate;
-            }
-        }
-        for (var i = slotValues.size() - 1; i >= 0; i--) {
-            if (slotValues[i] != null) { return slotValues[i] as Lang.Number; }
+        if (lastDataSlot >= 0 && lastDataSlot > newestSlot - numBars) {
+            return slotValues[lastDataSlot % numBars] as Lang.Number or Null;
         }
         return null;
     }
@@ -357,16 +368,17 @@ class VivoHeartView extends Ui.WatchFace {
 
         // Cache capability check (avoids repeated "has" checks in onUpdate)
         hasSensorHistory = (Toybox has :SensorHistory) && (Toybox.SensorHistory has :getHeartRateHistory);
+        Diag.log("view init ok zones=" + heartRateZones + " sensorHist=" + hasSensorHistory);
     }
 
     function onLayout(dc as Gfx.Dc) as Void {
         width = dc.getWidth();
         height = dc.getHeight();
+        Diag.log("onLayout " + width + "x" + height);
         centerX = width / 2;
 
         graphBottom = height;
-        lastComputedHeightPct = settingBarsHeightPercent;
-        graphHeight = height * lastComputedHeightPct / 100;
+        graphHeight = height * settingBarsHeightPercent / 100;
 
         // Bar count follows screen width at a fixed pitch so bars look the same on every
         // resolution; the time window stays PERIOD_SEC, so each bar covers PERIOD_SEC/numBars.
@@ -376,18 +388,22 @@ class VivoHeartView extends Ui.WatchFace {
             numBars = n;
             slotValues = new [n] as Lang.Array;
             slotDist = new [n] as Lang.Array;
-            barTop = new [n] as Lang.Array;
-            hasSlotData = false;
+            newestSlot = -1;
+            lastDataSlot = -1;
             lastFetchTime = 0;
         }
-        barIntervalMs = PERIOD_SEC * 1000 / numBars;
+        slotSec = PERIOD_SEC / numBars;
+        barIntervalMs = slotSec * 1000;
 
         hasActivityInfo = (Toybox has :Activity) && (Toybox.Activity has :getActivityInfo);
-
-        cachedBarVersion = -1;
+        hasActMonHistory = (Toybox has :ActivityMonitor) && (Toybox.ActivityMonitor has :getHeartRateHistory);
+        hasBitmapApi = (Toybox.Graphics has :createBufferedBitmap);
+        bmpRef = [null, null] as Lang.Array;  // new screen size: recreate lazily
+        Diag.log("onLayout ok bars=" + numBars + " graphH=" + graphHeight);
     }
 
     function onShow() as Void {
+        Diag.log("onShow");
     }
 
     //! Force per-minute state (time strings) to be rebuilt on the next frame.
@@ -418,10 +434,11 @@ class VivoHeartView extends Ui.WatchFace {
         }
 
         var hasZones = (heartRateZones != null && heartRateZones.size() > 5);
-        var hasBars = hasZones && ensureBars();
+        if (hasZones) { refreshSlotData(); }
+        var hasBars = hasZones && lastDataSlot > newestSlot - numBars;
 
         if (isLowPower) {
-            drawScene(dc, true, hasBars, OUTLINE_COLOR, OUTLINE_COLOR);
+            drawFrame(dc, true, hasBars, OUTLINE_COLOR, OUTLINE_COLOR);
             return;
         }
 
@@ -437,21 +454,68 @@ class VivoHeartView extends Ui.WatchFace {
             }
         }
 
-        drawScene(dc, false, hasBars, hourColor, minColor);
+        drawFrame(dc, false, hasBars, hourColor, minColor);
     }
 
-    //! Draw the full scene onto the screen dc.
-    //! lowPower: outline-only time and bars (AMOLED always-on limits).
-    private function drawScene(dc as Gfx.Dc, lowPower as Lang.Boolean, hasBars as Lang.Boolean,
+    //! One frame: cached bars (blit) + time text, in the configured stacking order.
+    //! lowPower: outline-only time and bars (AMOLED always-on lit-pixel limit).
+    private function drawFrame(dc as Gfx.Dc, lowPower as Lang.Boolean, hasBars as Lang.Boolean,
                                hourColor as Lang.Number, minColor as Lang.Number) as Void {
-        dc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_BLACK);
-        dc.clear();
-
         var barsInFront = (settingBarsPosition == 1);
-        if (hasBars && !barsInFront) { drawBars(dc, lowPower); }
+        var bmp = hasBars ? getBarsBitmap(lowPower, barsInFront) : null;
 
-        var hourStr = cachedHourStr;
-        var minStr = cachedMinStr;
+        if (barsInFront || bmp == null) {
+            dc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_BLACK);
+            dc.clear();
+        }
+        if (!barsInFront) {
+            // Opaque full-screen bitmap: the blit also clears the screen
+            if (bmp != null) { dc.drawBitmap(0, 0, bmp); }
+            else if (hasBars) { renderBars(dc, lowPower); }
+        }
+
+        drawTimeLayer(dc, lowPower, hourColor, minColor);
+
+        if (barsInFront) {
+            if (bmp != null) { dc.drawBitmap(0, 0, bmp); }
+            else if (hasBars) { renderBars(dc, lowPower); }
+        }
+    }
+
+    //! The cached bars bitmap for this mode, (re)rendered when stale. Null when bitmaps
+    //! are unavailable (the caller then draws the bars directly).
+    private function getBarsBitmap(lowPower as Lang.Boolean, alpha as Lang.Boolean) as Gfx.BufferedBitmap or Null {
+        if (!hasBitmapApi) { return null; }
+        var idx = lowPower ? 1 : 0;
+        var ref = bmpRef[idx] as Gfx.BufferedBitmapReference or Null;
+        if (ref == null || bmpAlpha[idx] != alpha) {
+            var opts = { :width => width, :height => height };
+            if (alpha) { opts[:alphaBlending] = Graphics.ALPHA_BLENDING_FULL; }
+            ref = Graphics.createBufferedBitmap(opts);
+            bmpRef[idx] = ref;
+            bmpAlpha[idx] = alpha;
+            bmpData[idx] = -1;
+        }
+        var bmp = ref.get() as Gfx.BufferedBitmap or Null;
+        if (bmp == null) { return null; }
+        if (bmpData[idx] != cachedDataSampleCount || bmpSettings[idx] != settingsVersion || !bmp.isCached()) {
+            Diag.log("render bars lp=" + lowPower);
+            var bdc = bmp.getDc();
+            if (alpha) {
+                bdc.setColor(Graphics.COLOR_TRANSPARENT, Graphics.COLOR_TRANSPARENT);
+            } else {
+                bdc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
+            }
+            bdc.clear();
+            renderBars(bdc, lowPower);
+            bmpData[idx] = cachedDataSampleCount;
+            bmpSettings[idx] = settingsVersion;
+        }
+        return bmp;
+    }
+
+    //! Hour + minute, outline layer then fill layer.
+    private function drawTimeLayer(dc as Gfx.Dc, lowPower as Lang.Boolean, hourColor as Lang.Number, minColor as Lang.Number) as Void {
         var sideBySide = (settingTimeLayout == 1);
         var centered = (settingTimePosition == 1);
         var yA;  // hour (stacked) or both (side by side)
@@ -462,14 +526,10 @@ class VivoHeartView extends Ui.WatchFace {
             yA = (height * (centered ? HOUR_Y_RATIO_CENTER : HOUR_Y_RATIO_TOP)).toNumber();
             yB = (height * (centered ? MINUTE_Y_RATIO_CENTER : MINUTE_Y_RATIO_TOP)).toNumber();
         }
-
-        // Outline (border) always behind fill
         var outFont = lowPower ? bigNumProtomoleculeOutline : bigNumProtomoleculeOutlineThick;
         dc.setColor(lowPower ? Graphics.COLOR_DK_GRAY : OUTLINE_COLOR, Graphics.COLOR_TRANSPARENT);
-        drawTime(dc, outFont, hourStr, minStr, sideBySide, yA, yB, -1, -1);
-        drawTime(dc, bigNumProtomolecule, hourStr, minStr, sideBySide, yA, yB, hourColor, minColor);
-
-        if (hasBars && barsInFront) { drawBars(dc, lowPower); }
+        drawTime(dc, outFont, cachedHourStr, cachedMinStr, sideBySide, yA, yB, -1, -1);
+        drawTime(dc, bigNumProtomolecule, cachedHourStr, cachedMinStr, sideBySide, yA, yB, hourColor, minColor);
     }
 
     //! Draw hour + minute. Colours of -1 keep the dc's current colour.
@@ -490,49 +550,9 @@ class VivoHeartView extends Ui.WatchFace {
         }
     }
 
-    //! Filled bars per zone colour (high power) or grey outlines (low power).
-    protected function drawBars(dc as Gfx.Dc, lowPower as Lang.Boolean) as Void {
-        var barW = getBarWidth();
-        if (lowPower) {
-            dc.setPenWidth(1);
-            dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_BLACK);
-            for (var i = 0; i < numBars; i++) {
-                var top = barTop[i] as Lang.Number;
-                if (top >= 0) { dc.drawRectangle(i * BAR_PITCH, top, barW, graphBottom - top); }
-            }
-            return;
-        }
-        var scheme = settingBarsColorScheme;
-        for (var z = 0; z < 6; z++) {
-            var bars = zoneBars[z] as Lang.Array;
-            var sz = bars.size();
-            if (sz == 0) { continue; }
-            dc.setColor(getColorForZone(scheme, z, false), Graphics.COLOR_BLACK);
-            for (var i = 0; i < sz; i += 3) {
-                dc.fillRectangle(bars[i] as Lang.Number, bars[i + 1] as Lang.Number, barW, bars[i + 2] as Lang.Number);
-            }
-        }
-    }
-
-    //! Make sure slot data is fresh (throttled) and bar geometry matches it.
-    //! Returns true when there is something to draw.
-    private function ensureBars() as Lang.Boolean {
-        refreshSlotData();
-        if (!hasSlotData) { return false; }
-        var heightPct = settingBarsHeightPercent;
-        if (heightPct != lastComputedHeightPct) {
-            lastComputedHeightPct = heightPct;
-            graphHeight = height * heightPct / 100;
-            cachedBarVersion = -1;
-        }
-        if (cachedBarVersion != cachedDataSampleCount) {
-            rebuildBars();
-        }
-        return true;
-    }
-
-    //! Slot values -> bar tops and exact-size per-zone [x, y, h] arrays (no .add growth).
-    protected function rebuildBars() as Void {
+    //! Draw every bar in one pass straight from the ring buffer: filled in zone colours
+    //! (high power) or grey outlines (always-on). Coordinates are clamped to the screen.
+    protected function renderBars(dc as Gfx.Dc, lowPower as Lang.Boolean) as Void {
         var zones = heartRateZones as Lang.Array;
         var zmax = zones[5] as Lang.Number;
         if (zmax <= 0) { zmax = 200; }  // guard against corrupted profile
@@ -541,42 +561,45 @@ class VivoHeartView extends Ui.WatchFace {
         var z2 = zones[2] as Lang.Number;
         var z3 = zones[3] as Lang.Number;
         var z4 = zones[4] as Lang.Number;
-        var counts = [0, 0, 0, 0, 0, 0];
-        var zoneOf = new [numBars];
-        for (var i = 0; i < numBars; i++) {
-            var hr = slotValues[i];
-            barTop[i] = -1;
+        var gb = graphBottom;
+        var gh = graphHeight;
+        var barW = getBarWidth();
+        var n = numBars;
+        var first = newestSlot - n + 1;
+        var vals = slotValues;
+        var colors = null;
+        if (lowPower) {
+            dc.setPenWidth(1);
+            dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
+        } else {
+            var scheme = settingBarsColorScheme;
+            colors = [getColorForZone(scheme, 0, false), getColorForZone(scheme, 1, false), getColorForZone(scheme, 2, false),
+                      getColorForZone(scheme, 3, false), getColorForZone(scheme, 4, false), getColorForZone(scheme, 5, false)];
+        }
+        var lastZ = -1;
+        for (var i = 0; i < n; i++) {
+            var hr = vals[(first + i) % n];
             if (hr == null) { continue; }
-            var y = graphBottom - (hr * graphHeight / zmax);
-            if (y >= graphBottom) { continue; }
-            barTop[i] = y;
-            var z = (hr < z0) ? 0 : (hr <= z1) ? 1 : (hr <= z2) ? 2 : (hr <= z3) ? 3 : (hr <= z4) ? 4 : 5;
-            zoneOf[i] = z;
-            counts[z] = counts[z] + 1;
+            var y = gb - (hr * gh / zmax);
+            if (y >= gb) { continue; }
+            if (y < 0) { y = 0; }
+            if (lowPower) {
+                dc.drawRectangle(i * BAR_PITCH, y, barW, gb - y);
+            } else {
+                var z = (hr < z0) ? 0 : (hr <= z1) ? 1 : (hr <= z2) ? 2 : (hr <= z3) ? 3 : (hr <= z4) ? 4 : 5;
+                if (z != lastZ) { dc.setColor(colors[z], Graphics.COLOR_TRANSPARENT); lastZ = z; }
+                dc.fillRectangle(i * BAR_PITCH, y, barW, gb - y);
+            }
         }
-        var fill = [0, 0, 0, 0, 0, 0];
-        for (var z = 0; z < 6; z++) { zoneBars[z] = new [(counts[z] as Lang.Number) * 3]; }
-        for (var i = 0; i < numBars; i++) {
-            var top = barTop[i] as Lang.Number;
-            if (top < 0) { continue; }
-            var z = zoneOf[i] as Lang.Number;
-            var arr = zoneBars[z] as Lang.Array;
-            var k = fill[z] as Lang.Number;
-            arr[k] = i * BAR_PITCH;
-            arr[k + 1] = top;
-            arr[k + 2] = graphBottom - top;
-            fill[z] = k + 3;
-        }
-        cachedBarVersion = cachedDataSampleCount;
     }
 
-    //! Production: throttled SensorHistory fetch, binned straight into slotValues.
+    //! Production: throttled, incremental SensorHistory fetch into the ring buffer.
     (:production)
     private function refreshSlotData() as Void {
-        var now = System.getTimer();
-        if (hasSlotData && (now - lastFetchTime < barIntervalMs)) { return; }
         if (!hasSensorHistory) { return; }
-        if (deferFetch && hasSlotData) {
+        var now = System.getTimer();
+        if (newestSlot >= 0 && (now - lastFetchTime < barIntervalMs)) { return; }
+        if (deferFetch && newestSlot >= 0) {
             // Draw the first wake frame from the cache; fetch on the next update.
             deferFetch = false;
             Ui.requestUpdate();
@@ -586,49 +609,62 @@ class VivoHeartView extends Ui.WatchFace {
         doProductionFetch();
     }
 
-    //! Fetch the last PERIOD_SEC of HR history and keep, per slot, the sample closest to the
-    //! slot centre. Single pass, no intermediate arrays.
+    //! Bring the ring up to date. Full 6 h fetch when empty or after a clock jump; otherwise
+    //! clear the slots that rolled over and fetch only from the previous newest slot (which
+    //! was still filling) onwards. Per slot, the sample closest to the slot centre wins.
     (:production)
     protected function doProductionFetch() as Void {
-        var now = System.getTimer();
-        lastFetchTime = now;
+        Diag.log("fetch start newest=" + newestSlot);
+        lastFetchTime = System.getTimer();
+        var n = numBars;
+        var ss = slotSec;
+        var nowSec = Time.now().value();
+        var cur = nowSec / ss;
+        var first = cur - n + 1;
+        var vals = slotValues;
+        var dist = slotDist;
+        var fromSlot;
+        if (newestSlot < 0 || cur < newestSlot || cur - newestSlot >= n) {
+            for (var i = 0; i < n; i++) { vals[i] = null; dist[i] = ss; }
+            lastDataSlot = -1;
+            fromSlot = first;
+        } else {
+            // Slots newestSlot .. cur get (re)filled; their ring entries hold stale data.
+            for (var s = newestSlot; s <= cur; s++) { vals[s % n] = null; dist[s % n] = ss; }
+            if (lastDataSlot >= newestSlot) { lastDataSlot = newestSlot - 1; }
+            fromSlot = newestSlot;
+        }
+        newestSlot = cur;
         try {
-            var iter = Toybox.SensorHistory.getHeartRateHistory({:period => PERIOD_SEC, :order => SensorHistory.ORDER_OLDEST_FIRST});
-            var n = numBars;
-            var slotSec = PERIOD_SEC / n;
-            var half = slotSec / 2;
-            var periodStart = Time.now().value() - PERIOD_SEC;
-            var vals = slotValues;
-            var dist = slotDist;
-            for (var i = 0; i < n; i++) { vals[i] = null; dist[i] = slotSec; }
-            var any = false;
+            var iter = Toybox.SensorHistory.getHeartRateHistory({
+                :period => new Time.Duration(nowSec - fromSlot * ss + 1),
+                :order => SensorHistory.ORDER_OLDEST_FIRST });
+            var half = ss / 2;
             var sample = iter.next();
             while (sample != null) {
                 var hr = sample.data;
                 var when = sample.when;
                 if (hr != null && when != null) {
-                    var off = when.value() - periodStart;
-                    if (off >= 0) {
-                        var idx = off / slotSec;
-                        if (idx < n) {
-                            var d = off - idx * slotSec - half;
-                            if (d < 0) { d = -d; }
-                            if (d < (dist[idx] as Lang.Number)) {
-                                dist[idx] = d;
-                                vals[idx] = hr;
-                                any = true;
-                            }
+                    var t = when.value();
+                    var abs = t / ss;
+                    if (abs >= fromSlot && abs <= cur) {
+                        var d = t - abs * ss - half;
+                        if (d < 0) { d = -d; }
+                        var k = abs % n;
+                        if (d < (dist[k] as Lang.Number)) {
+                            dist[k] = d;
+                            vals[k] = hr;
+                            if (abs > lastDataSlot) { lastDataSlot = abs; }
                         }
                     }
                 }
                 sample = iter.next();
             }
-            if (any || hasSlotData) {
-                hasSlotData = any;
-                cachedDataSampleCount++;
-            }
         } catch (ex) {
+            Diag.log("fetch exception");
         }
+        cachedDataSampleCount++;
+        Diag.log("fetch done lastData=" + lastDataSlot);
     }
 
     //! Debug: synthetic HR data, regenerated once per minute.
@@ -639,12 +675,15 @@ class VivoHeartView extends Ui.WatchFace {
     private function refreshSlotData() as Void {
         var ct = System.getClockTime();
         var m = ct.hour * 60 + ct.min;
-        if (m == lastDebugMinute && hasSlotData) { return; }
+        if (m == lastDebugMinute && newestSlot >= 0) { return; }
         lastDebugMinute = m;
         var data = generateDebugHrData();
         if (data.size() == numBars) {
-            for (var i = 0; i < numBars; i++) { slotValues[i] = data[i]; }
-            hasSlotData = true;
+            var cur = Time.now().value() / slotSec;
+            var first = cur - numBars + 1;
+            for (var i = 0; i < numBars; i++) { slotValues[(first + i) % numBars] = data[i]; }
+            newestSlot = cur;
+            lastDataSlot = cur;
             cachedDataSampleCount++;
         }
     }
@@ -707,6 +746,7 @@ class VivoHeartView extends Ui.WatchFace {
 
     // The user has just looked at their watch.
     function onExitSleep() as Void {
+        Diag.log("onExitSleep");
         isLowPower = false;
         deferFetch = true;  // draw first wake frame with stale cache, fetch on next update
         cachedIs24Hour = System.getDeviceSettings().is24Hour;  // refresh on wake
@@ -714,6 +754,7 @@ class VivoHeartView extends Ui.WatchFace {
 
     // AMOLED: draw <10% pixels in onUpdate or display will turn off.
     function onEnterSleep() as Void {
+        Diag.log("onEnterSleep");
         isLowPower = true;
     }
 }
