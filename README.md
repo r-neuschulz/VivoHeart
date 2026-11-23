@@ -1,6 +1,7 @@
 # VivoHeart Garmin IQ Watchface
 
 ![Connect IQ SDK](https://img.shields.io/badge/Connect_IQ_SDK-8.4.1-blue?style=flat-square)
+![Devices](https://img.shields.io/badge/Devices-34-blue?style=flat-square)
 ![Languages](https://img.shields.io/badge/Languages-35-green?style=flat-square)
 
 <!-- ![Downloads](https://img.shields.io/badge/CIQ_Store_downloads-38-green?style=flat-square) -->
@@ -39,19 +40,41 @@ Configure in Garmin Connect app or Connect IQ Store settings:
 
 ## Compatibility
 
-Supported watches share the **454×454 round AMOLED** display:
+Round AMOLED watches at four resolutions. Fonts are designed at 454 px; `deploy.ps1` renders scaled copies for the smaller screens, and the bar count follows the screen width (86 / 79 / 74 / 68 bars, always 6 h).
 
-| Device ID | Models |
-|-----------|--------|
-| `epix2pro51mm` | epix Pro 51 mm, D2 Mach 1 Pro, tactix 7 AMOLED |
-| `approachs7047mm` | Approach S70 47 mm |
-| `descentmk351mm` | Descent Mk3i 51 mm |
-| `fenix847mm` | fēnix 8 47/51 mm, tactix 8, quatix 8 |
-| `fr57047mm` | Forerunner 570 47 mm |
-| `fr965` | Forerunner 965 |
-| `fr970` | Forerunner 970 |
-| `venu3` | Venu 3 |
+| Resolution | Device IDs | Models |
+|-----------|-----------|--------|
+| 454×454 | `epix2pro51mm` `fenix847mm` `fr965` `fr970` `fr57047mm` `venu3` `approachs7047mm` `descentmk351mm` | epix Pro 51 mm, fēnix 8 47/51 mm, Forerunner 965 / 970 / 570 47 mm, Venu 3, Approach S70 47 mm, Descent Mk3i 51 mm |
+| 416×416 | `epix2` `epix2pro47mm` `fenix843mm` `fenixe` `fr265` `venu2` `venu2plus` `d2mach1` `d2airx10` `instinct3amoled50mm` | epix Gen 2, epix Pro 47 mm, fēnix 8 43 mm, fēnix E, Forerunner 265, Venu 2 / 2 Plus, D2 Mach 1, D2 Air X10, Instinct 3 AMOLED 50 mm |
+| 390×390 | `epix2pro42mm` `fr165` `fr165m` `fr57042mm` `venu3s` `vivoactive5` `vivoactive6` `marq2` `marq2aviator` `approachs50` `approachs7042mm` `descentg2` `descentmk343mm` `instinct3amoled45mm` | epix Pro 42 mm, Forerunner 165 / 570 42 mm, Venu 3S, vívoactive 5 / 6, MARQ Gen 2, Approach S50 / S70 42 mm, Descent G2 / Mk3 43 mm, Instinct 3 AMOLED 45 mm |
+| 360×360 | `fr265s` `venu2s` | Forerunner 265S, Venu 2S |
 
+`.\deploy.ps1 -ListDevices` prints the list from `manifest.xml`.
+
+## Performance
+
+Profiled on an epix Pro 51 mm (firmware 27.18) with the benchmark build, µs per call:
+
+| Path | develop (direct draw) | Now |
+|------|------:|------:|
+| 1 Hz high-power frame | 34,450 | 9,700 |
+| Always-on frame (once a minute) | 34,500 | 7,650 |
+| Bars on top, 1 Hz frame | 34,000 | 16,650 |
+| HR refresh fetch (every ~4 min) | 134,000 | 2,800 |
+| Full 6 h fetch (startup only) | 134,000 | 142,000 |
+| New HR data: bars re-rendered (every ~4 min) | 77,000 | 81,000 |
+
+What the watch showed per operation: a full-screen blit costs 0.3 ms (opaque) or 1.3 ms (alpha), the time text 5 ms, and drawing the 86 bars 21–26 ms on screen or ~42 ms into a bitmap. So the bars are pre-rendered into a screen-sized bitmap (one for filled, one for always-on outlines) only when the data or a setting changes. With bars behind the time that bitmap is opaque, so its blit also clears the screen. HR history is kept in a ring buffer of absolute time slots, so each refresh reads only the minutes since the last one.
+
+The simulator gets this badly wrong (blits ~33 ms, bars ~8 ms), so don't tune from simulator numbers. On a USB-connected watch:
+
+```powershell
+.\scripts\Sideload-Test.ps1 -Kind bench          # installs "VH Bench" (own app id) + empty log file
+# select VH Bench, raise your wrist every ~10 s for a minute, reconnect
+.\scripts\Sideload-Test.ps1 -Kind bench -Fetch   # prints the BENCH lines
+```
+
+`-Kind diag` installs "VH Diag" instead, which logs every startup step for crash hunting. `scripts/Run-Benchmark.ps1` runs the same bench in the simulator.
 
 ## Screenshots
 

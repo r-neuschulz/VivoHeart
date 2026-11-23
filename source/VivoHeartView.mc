@@ -4,31 +4,42 @@ using Toybox.System as Sys;
 using Toybox.Lang as Lang;
 using Toybox.Application as App;
 using Toybox.UserProfile as Up;
+using Toybox.Activity as Activity;
 using Toybox.ActivityMonitor as Act;
 using Toybox.Time as Time;
 using Toybox.Time.Gregorian as Gregorian;
 
+//! Rendering model, tuned from on-device profiling (scripts/Sideload-Test.ps1 -Kind bench,
+//! epix Pro 51 mm; README "Performance"):
+//!  - On the watch a full-screen blit costs 0.3 ms (opaque) / 1.3 ms (alpha), while drawing
+//!    the ~86 bars costs ~21 ms and the time text ~5 ms. So the bars are rendered into a
+//!    screen-sized BufferedBitmap only when the HR data or a setting changes, separately for
+//!    high-power (filled) and always-on (outlined) mode, and every frame is blit + text.
+//!  - With bars behind the time the bitmap is opaque black, so its blit also clears the screen.
+//!  - HR history lives in a ring buffer of absolute time slots (slot = epoch / slotSec), so a
+//!    refresh fetches only the minutes since the last one and clears only the slots that
+//!    rolled over. A full 6 h fetch costs ~134 ms on the watch.
 class VivoHeartView extends Ui.WatchFace {
 
     //! Instance variable to store heart rate zones and font
-    private var heartRateZones as Lang.Array or Null;
-    private var bigNumProtomolecule as Gfx.FontDefinition or Gfx.FontReference or Ui.FontResource = Graphics.FONT_LARGE;
+    protected var heartRateZones as Lang.Array or Null;
+    protected var bigNumProtomolecule as Gfx.FontDefinition or Gfx.FontReference or Ui.FontResource = Graphics.FONT_LARGE;
     private var bigNumProtomoleculeOutline as Gfx.FontDefinition or Gfx.FontReference or Ui.FontResource = Graphics.FONT_MEDIUM;
-    private var bigNumProtomoleculeOutlineThick as Gfx.FontDefinition or Gfx.FontReference or Ui.FontResource = Graphics.FONT_MEDIUM;
-    private var width as Lang.Number = 0;
-    private var height as Lang.Number = 0;
+    protected var bigNumProtomoleculeOutlineThick as Gfx.FontDefinition or Gfx.FontReference or Ui.FontResource = Graphics.FONT_MEDIUM;
+    protected var width as Lang.Number = 0;
+    protected var height as Lang.Number = 0;
 
     // Pre-cached layout positions (computed once in onLayout)
     private var centerX as Lang.Number = 0;
 
-    // Pre-cached graph layout constants (computed once in onLayout)
+    // Graph layout (computed in onLayout / when BarsHeight changes)
     private var graphBottom as Lang.Number = 0;
     private var graphHeight as Lang.Number = 0;
-    private var reducedWidth as Lang.Number = 0;
-    private var stepSize as Lang.Number = 1;
-    private var barIntervalMs as Lang.Number = 0;
-    private const MAX_DATA_POINTS = 86;
-    private const PERIOD_SEC = 6 * 3600;
+    private const BAR_PITCH = 5;                 // px per bar (2 px bar + 3 px gap by default)
+    private const GRAPH_WIDTH_RATIO = 0.95;      // 454 px -> 86 bars, 416 -> 79, 390 -> 74, 360 -> 68
+    protected var numBars as Lang.Number = 86;
+    protected var barIntervalMs as Lang.Number = 0;
+    protected const PERIOD_SEC = 6 * 3600;
 
     // Layout ratios (fraction of screen dimension)
     private const HOUR_Y_RATIO_TOP = 0.20;       // hour when position=top
@@ -37,30 +48,28 @@ class VivoHeartView extends Ui.WatchFace {
     private const MINUTE_Y_RATIO_CENTER = 0.665; // minute when position=centered
     private const SIDEBYSIDE_Y_RATIO_TOP = 0.354;    // single line when position=top (~70px below stacked top)
     private const SIDEBYSIDE_Y_RATIO_CENTER = 0.5;   // single line when position=centered
-    // Graph height as percentage of screen height (see getBarsHeightPercent())
-    // Removed fixed GRAPH_HEIGHT_RATIO; now driven by BarsHeight setting.
-    private const GRAPH_WIDTH_RATIO = 0.97;  // graph width (slight inset from right edge)
-    
-    // Cache HR graph data - refetch interval based on bar count (period/numBars), only update when new sample arrives
-    // Production: values + timestamps (seconds) for fixed-interval time-based sampling. Debug: values only.
-    private var cachedHeartRateData as Lang.Array or Null = null;
-    private var cachedHeartRateTimes as Lang.Array or Null = null;  // parallel array of epoch seconds; null in debug
-    private var cachedFetchEpochSec as Lang.Number = 0;  // Time.now().value() captured at fetch; used by bar builder
-    private var cachedDataSampleCount as Lang.Number = 0;
-    private var lastFetchTime as Lang.Number = 0;
+
+    // HR ring buffer: absolute slot s (= epochSec / slotSec) lives at index s % numBars.
+    // Valid slots are newestSlot - numBars + 1 .. newestSlot; null = no sample.
+    protected var slotValues as Lang.Array = [] as Lang.Array;
+    protected var slotDist as Lang.Array = [] as Lang.Array;   // distance of the kept sample to the slot centre
+    protected var slotSec as Lang.Number = 251;
+    protected var newestSlot as Lang.Number = -1;               // -1 = ring empty / needs full fetch
+    protected var lastDataSlot as Lang.Number = -1;             // newest slot that holds a value
+    protected var cachedDataSampleCount as Lang.Number = 0;     // bumped whenever the ring changes
+    protected var lastFetchTime as Lang.Number = 0;
 
     //! When true, skip sensor fetch on the next onUpdate to unblock the first wake frame
-    private var deferFetch as Lang.Boolean = false;
+    protected var deferFetch as Lang.Boolean = false;
 
-    // Cached zone-bucketed bar data (flat arrays: every 3 elements = x, y, h). Zone 0..5.
-    private var cachedBarVersion as Lang.Number = -1;
-    private var cachedZone0Bars as Lang.Array or Null = null;
-    private var cachedZone1Bars as Lang.Array or Null = null;
-    private var cachedZone2Bars as Lang.Array or Null = null;
-    private var cachedZone3Bars as Lang.Array or Null = null;
-    private var cachedZone4Bars as Lang.Array or Null = null;
-    private var cachedZone5Bars as Lang.Array or Null = null;
-    private var cachedAllBars as Lang.Array or Null = null;
+    // Pre-rendered bars: index 0 = high power (filled), 1 = always-on (outlines).
+    // Re-rendered when the ring data or a setting changes, or the graphics pool evicted it.
+    private var hasBitmapApi as Lang.Boolean = false;
+    private var bmpRef as Lang.Array = [null, null] as Lang.Array;
+    private var bmpAlpha as Lang.Array = [false, false] as Lang.Array;  // true when created with alpha (bars on top)
+    private var bmpData as Lang.Array = [-1, -1] as Lang.Array;
+    private var bmpSettings as Lang.Array = [-1, -1] as Lang.Array;
+    protected var settingsVersion as Lang.Number = 0;
 
     // Custom colors to replace muddy Garmin defaults
     private const COLOR_VIVID_BLUE = 0x0088FF;       // bright azure (replaces dim COLOR_BLUE)
@@ -89,56 +98,30 @@ class VivoHeartView extends Ui.WatchFace {
     private var viridisDark as Lang.Array = [] as Lang.Array;
     private var magmaFill as Lang.Array = [] as Lang.Array;
     private var magmaDark as Lang.Array = [] as Lang.Array;
-
-    private var hasSensorHistory as Lang.Boolean = false;
-
-    // BufferedBitmap for off-screen graph rendering (single drawBitmap per frame)
-    private var graphBitmapRef as Gfx.BufferedBitmapReference or Null = null;   // full view, 7-color palette
-    private var graphTop as Lang.Number = 0;           // Y offset where bitmap is blitted
-    private var hasBufferedBitmap as Lang.Boolean = false;
-    private var graphBitmapVersion as Lang.Number = -1; // tracks which bar data version the full bitmap contains
-    private var lastRenderedBarsScheme as Lang.Number = -1; // re-render bitmap when scheme changes
-    private var lastRenderedBarsGap as Lang.Number = -1;   // re-render bitmap when gap setting changes
-    private var lastComputedHeightPct as Lang.Number = -1; // track BarsHeight setting changes
+    protected var hasSensorHistory as Lang.Boolean = false;
+    private var hasActivityInfo as Lang.Boolean = false;
+    private var hasActMonHistory as Lang.Boolean = false;
 
     //! True when in low-power / Always On Display mode (after onEnterSleep)
-    private var isLowPower as Lang.Boolean = false;
+    protected var isLowPower as Lang.Boolean = false;
 
     // Cached user settings – loaded once in initialize() and refreshed in loadSettings().
-    // Eliminates 9+ App.Properties.getValue() calls per frame.
     private var settingFontColorScheme as Lang.Number = SCHEME_GARMIN;
     private var settingBarsColorScheme as Lang.Number = SCHEME_GARMIN;
-    private var settingBarsPosition as Lang.Number = 0;
-    private var settingBarsGap as Lang.Number = 1;
-    private var settingTimePosition as Lang.Number = 1;
-    private var settingTimeLayout as Lang.Number = 1;
-    private var settingMinutesColorMode as Lang.Number = 0;
+    protected var settingBarsPosition as Lang.Number = 0;  // 0 = bars behind time, 1 = bars in front
+    private var settingBarsGap as Lang.Number = 1;         // 0 = bars touch, 1 = default gaps
+    private var settingTimePosition as Lang.Number = 1;    // 0 = top, 1 = centered
+    private var settingTimeLayout as Lang.Number = 1;      // 0 = stacked, 1 = side by side
+    private var settingMinutesColorMode as Lang.Number = 0; // 0 = darker shade, 1 = match hours
     private var settingBarsHeightPercent as Lang.Number = 68;
     private var settingFontSize as Lang.Number = 1;  // 0=Small, 1=Default, 2=Large, 3=Extra Large
     private var settingFontFamily as Lang.Number = 0;  // 0=ProtoMolecule, 1=OCR Extended, 2=Rockwell Extra Bold, 3=Sans Bold
     private var settingFontAntialias as Lang.Number = 1;  // 0=Off, 1=On
     private var cachedIs24Hour as Lang.Boolean = true;  // from System.getDeviceSettings(); refreshed in loadSettings()/onExitSleep()
 
-    //! Cached setting accessors (no property reads – values are pre-loaded).
-    private function getFontColorScheme() as Lang.Number { return settingFontColorScheme; }
-    private function getBarsColorScheme() as Lang.Number { return settingBarsColorScheme; }
-    //! 0 = bars behind font, 1 = bars in front of font
-    private function getBarsPosition() as Lang.Number { return settingBarsPosition; }
-    //! 0 = no gaps (bars touch), 1 = default gaps (current)
-    private function getBarsGap() as Lang.Number { return settingBarsGap; }
-    //! 0 = top, 1 = centered
-    private function getTimePosition() as Lang.Number { return settingTimePosition; }
-    //! 0 = stacked (hour above minute), 1 = side by side
-    private function getTimeLayout() as Lang.Number { return settingTimeLayout; }
-    //! 0 = minutes darker shade, 1 = minutes match hours
-    private function getMinutesColorMode() as Lang.Number { return settingMinutesColorMode; }
-    //! Bar height as percentage of screen height (already mapped from setting key)
-    private function getBarsHeightPercent() as Lang.Number { return settingBarsHeightPercent; }
-    //! 0=Small, 1=Default, 2=Large, 3=Extra Large
-    private function getFontSize() as Lang.Number { return settingFontSize; }
-    //! Bar width: stepSize when no gaps (bars touch), 2 when default gaps
+    //! Bar width: full pitch when no gaps (bars touch), 2 px with default gaps
     private function getBarWidth() as Lang.Number {
-        return (settingBarsGap == 0) ? stepSize : 2;
+        return (settingBarsGap == 0) ? BAR_PITCH : 2;
     }
 
     //! Read all user-facing settings from App.Properties and cache them.
@@ -164,7 +147,10 @@ class VivoHeartView extends Ui.WatchFace {
         // Cache device-level is24Hour (avoids allocating DeviceSettings every frame)
         cachedIs24Hour = System.getDeviceSettings().is24Hour;
         // Reload fonts when FontSize setting changes
+        Diag.log("settings ok fam=" + settingFontFamily + " sz=" + settingFontSize + " aa=" + settingFontAntialias + " pos=" + settingBarsPosition + " layout=" + settingTimeLayout + " bh=" + settingBarsHeightPercent);
         loadFontsForCurrentSize();
+        if (height > 0) { graphHeight = height * settingBarsHeightPercent / 100; }
+        settingsVersion++;  // re-render cached bars
     }
 
     //! Load fill and outline fonts for the current FontFamily, FontSize, and FontAntialias settings.
@@ -212,11 +198,15 @@ class VivoHeartView extends Ui.WatchFace {
             }
         }
 
+        Diag.log("font fill load");
         var loadedFont = Ui.loadResource(fillRes);
+        Diag.log("font fill " + (loadedFont != null));
         if (loadedFont != null) { bigNumProtomolecule = loadedFont as Gfx.FontReference; }
         var loadedOutline = Ui.loadResource(outRes);
+        Diag.log("font outline " + (loadedOutline != null));
         if (loadedOutline != null) { bigNumProtomoleculeOutline = loadedOutline as Gfx.FontReference; }
         var loadedOutlineThick = Ui.loadResource(outThickRes);
+        Diag.log("font thick " + (loadedOutlineThick != null));
         if (loadedOutlineThick != null) { bigNumProtomoleculeOutlineThick = loadedOutlineThick as Gfx.FontReference; }
     }
 
@@ -236,7 +226,7 @@ class VivoHeartView extends Ui.WatchFace {
     private var cachedHourStr as Lang.String = "";
     private var cachedMinStr as Lang.String = "";
     private var lastCachedHour as Lang.Number = -1;
-    private var lastCachedMin as Lang.Number = -1;
+    protected var lastCachedMin as Lang.Number = -1;
     private var lastIs24Hour as Lang.Boolean = true;
 
 
@@ -304,23 +294,25 @@ class VivoHeartView extends Ui.WatchFace {
         return Graphics.COLOR_WHITE;
     }
 
-    //! Get current HR for time coloring. Production: ActivityMonitor or cached graph data.
+    //! Current HR for time colouring: newest ActivityMonitor sample (0.36 ms on the watch),
+    //! then the live sensor value (1.0 ms), then the newest graph slot.
     (:production)
     private function getCurrentHeartRateForDisplay() as Lang.Number or Null {
-        if (Toybox has :ActivityMonitor && Toybox.ActivityMonitor has :getHeartRateHistory) {
-            var iter = Act.getHeartRateHistory(1, true);  // 1 sample, newest first
-            var sample = iter.next();
+        if (hasActMonHistory) {
+            var sample = Act.getHeartRateHistory(1, true).next();  // 1 sample, newest first
             if (sample != null && sample.heartRate != null && sample.heartRate != Act.INVALID_HR_SAMPLE) {
                 return sample.heartRate;
             }
         }
-        // Fallback: use latest sample from cached graph data
-        if (cachedHeartRateData == null) {
-            return null;
+        if (hasActivityInfo) {
+            var info = Activity.getActivityInfo();
+            if (info != null) {
+                var live = info.currentHeartRate;
+                if (live != null && live > 0) { return live; }
+            }
         }
-        var arr = cachedHeartRateData as Lang.Array;
-        if (arr.size() > 0) {
-            return arr[arr.size() - 1] as Lang.Number or Null;
+        if (lastDataSlot >= 0 && lastDataSlot > newestSlot - numBars) {
+            return slotValues[lastDataSlot % numBars] as Lang.Number or Null;
         }
         return null;
     }
@@ -376,446 +368,325 @@ class VivoHeartView extends Ui.WatchFace {
 
         // Cache capability check (avoids repeated "has" checks in onUpdate)
         hasSensorHistory = (Toybox has :SensorHistory) && (Toybox.SensorHistory has :getHeartRateHistory);
+        Diag.log("view init ok zones=" + heartRateZones + " sensorHist=" + hasSensorHistory);
     }
 
-    // Load your resources here
     function onLayout(dc as Gfx.Dc) as Void {
         width = dc.getWidth();
         height = dc.getHeight();
+        Diag.log("onLayout " + width + "x" + height);
         centerX = width / 2;
 
-        // Pre-compute graph layout constants
         graphBottom = height;
-        var heightPct = getBarsHeightPercent();
-        graphHeight = height * heightPct / 100;
-        lastComputedHeightPct = heightPct;
-        reducedWidth = (width * GRAPH_WIDTH_RATIO).toNumber() + 36;
-        stepSize = (reducedWidth / MAX_DATA_POINTS).toNumber();
-        if (stepSize < 1) { stepSize = 1; }
-        barIntervalMs = (PERIOD_SEC * 1000 / MAX_DATA_POINTS).toNumber();
+        graphHeight = height * settingBarsHeightPercent / 100;
 
-        // Compute top Y of graph area
-        graphTop = graphBottom - graphHeight;
-
-        // Create off-screen BufferedBitmap for graph rendering (if supported).
-        // Use native color depth with full alpha blending instead of a palette.
-        // Palette-based bitmaps with COLOR_TRANSPARENT render correctly on the
-        // emulator but display the transparent pixels as a visible color on
-        // real hardware.  Full alpha blending is reliable on both.
-        // Bitmap is full screen height so dynamic BarsHeight changes don't
-        // require bitmap recreation; unused area stays transparent.
-        if (Toybox.Graphics has :createBufferedBitmap) {
-            graphBitmapRef = Graphics.createBufferedBitmap({
-                :width => reducedWidth,
-                :height => height,
-                :alphaBlending => Graphics.ALPHA_BLENDING_FULL
-            });
-            hasBufferedBitmap = true;
-        } else {
-            graphBitmapRef = null;
-            hasBufferedBitmap = false;
+        // Bar count follows screen width at a fixed pitch so bars look the same on every
+        // resolution; the time window stays PERIOD_SEC, so each bar covers PERIOD_SEC/numBars.
+        var n = (width * GRAPH_WIDTH_RATIO).toNumber() / BAR_PITCH;
+        if (n < 1) { n = 1; }
+        if (n != numBars || slotValues.size() != n) {
+            numBars = n;
+            slotValues = new [n] as Lang.Array;
+            slotDist = new [n] as Lang.Array;
+            newestSlot = -1;
+            lastDataSlot = -1;
+            lastFetchTime = 0;
         }
+        slotSec = PERIOD_SEC / numBars;
+        barIntervalMs = slotSec * 1000;
 
-        // Invalidate bar cache and bitmap version on layout change
-        cachedBarVersion = -1;
-        graphBitmapVersion = -1;
-     }
-
-    // Called when this View is brought to the foreground. Restore
-    // the state of this View and prepare it to be shown. This includes
-    // loading resources into memory.
-    function onShow() as Void {
+        hasActivityInfo = (Toybox has :Activity) && (Toybox.Activity has :getActivityInfo);
+        hasActMonHistory = (Toybox has :ActivityMonitor) && (Toybox.ActivityMonitor has :getHeartRateHistory);
+        hasBitmapApi = (Toybox.Graphics has :createBufferedBitmap);
+        bmpRef = [null, null] as Lang.Array;  // new screen size: recreate lazily
+        Diag.log("onLayout ok bars=" + numBars + " graphH=" + graphHeight);
     }
 
-    // Update the view (typecheck disabled – getCurrentHeartRateForDisplay has (:production)/(:debugHrData) variants)
+    function onShow() as Void {
+        Diag.log("onShow");
+    }
+
+    //! Force per-minute state (time strings) to be rebuilt on the next frame.
+    function invalidateMinute() as Void {
+        lastCachedMin = -1;
+    }
+
     (:typecheck(false))
     function onUpdate(dc as Gfx.Dc) as Void {
-        // Clear the DC
-        dc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_BLACK);
-        dc.clear();
-
-        var showClockTime = System.getClockTime();
-
-        // Cache formatted time strings – format() is expensive (triggers
-        // String.length & Float.toNumber internally).  Hour changes once/hr,
-        // minute once/min, so almost every frame reuses the cached string.
-        var hour = showClockTime.hour;
-        var min  = showClockTime.min;
+        var clock = System.getClockTime();
+        var hour = clock.hour;
+        var min = clock.min;
         var is24Hour = cachedIs24Hour;
-        var lastHour = lastCachedHour;
-        var lastMin = lastCachedMin;
-        var lastIs24 = lastIs24Hour;
-        if (hour != lastHour || is24Hour != lastIs24) {
-            if (is24Hour) {
-                cachedHourStr = hour.format("%02d");
-            } else {
+        if (hour != lastCachedHour || is24Hour != lastIs24Hour) {
+            var displayHour = hour;
+            if (!is24Hour) {
                 // 12-hour conversion: 0 becomes 12, 13-23 become 1-11; zero-pad to 02d
-                var displayHour = hour % 12;
-                if (displayHour == 0) {
-                    displayHour = 12;
-                }
-                cachedHourStr = displayHour.format("%02d");
+                displayHour = hour % 12;
+                if (displayHour == 0) { displayHour = 12; }
             }
+            cachedHourStr = displayHour.format("%02d");
             lastCachedHour = hour;
             lastIs24Hour = is24Hour;
         }
-        if (min != lastMin) {
-            cachedMinStr  = min.format("%02d");
-            lastCachedHour = hour;
+        if (min != lastCachedMin) {
+            cachedMinStr = min.format("%02d");
             lastCachedMin = min;
-            lastIs24Hour = is24Hour;
         }
 
-        // Time colors based on current HR (same zone scale as graph); minutes per MinutesColorMode
-        // NOTE: cachedHeartRateData may be stale (populated by drawHeartRateGraph on the
-        // previous frame).  Production uses sensor/cache; debug uses synthetic via getCurrentHeartRateDebug.
-        var currentHr = getCurrentHeartRateForDisplay();
-        var fontScheme = getFontColorScheme();
+        var hasZones = (heartRateZones != null && heartRateZones.size() > 5);
+        if (hasZones) { refreshSlotData(); }
+        var hasBars = hasZones && lastDataSlot > newestSlot - numBars;
+
+        if (isLowPower) {
+            drawFrame(dc, true, hasBars, OUTLINE_COLOR, OUTLINE_COLOR);
+            return;
+        }
+
+        // Time colours from current HR (same zone scale as the graph)
         var hourColor = Graphics.COLOR_WHITE;
         var minColor = Graphics.COLOR_LT_GRAY;
-        if (currentHr != null && heartRateZones != null && heartRateZones.size() > 5) {
-            var zoneIdx = getZoneIndex(currentHr, heartRateZones);
-            hourColor = getColorForZone(fontScheme, zoneIdx, false);
-            minColor = (settingMinutesColorMode == 1) ? hourColor : getColorForZone(fontScheme, zoneIdx, true);
-        }
-
-        // Compute time positions from TimePosition and TimeLayout
-        var timePos = getTimePosition();
-        var timeLayout = getTimeLayout();
-        var textYHH = 0;
-        var textYMM = 0;
-        var textYSide = 0;
-        if (timeLayout == 1) {
-            textYSide = (timePos == 1) ? (height * SIDEBYSIDE_Y_RATIO_CENTER).toNumber() : (height * SIDEBYSIDE_Y_RATIO_TOP).toNumber();
-        } else {
-            if (timePos == 1) {
-                textYHH = (height * HOUR_Y_RATIO_CENTER).toNumber();
-                textYMM = (height * MINUTE_Y_RATIO_CENTER).toNumber();
-            } else {
-                textYHH = (height * HOUR_Y_RATIO_TOP).toNumber();
-                textYMM = (height * MINUTE_Y_RATIO_TOP).toNumber();
+        if (hasZones) {
+            var currentHr = getCurrentHeartRateForDisplay();
+            if (currentHr != null) {
+                var zoneIdx = getZoneIndex(currentHr, heartRateZones);
+                hourColor = getColorForZone(settingFontColorScheme, zoneIdx, false);
+                minColor = (settingMinutesColorMode == 1) ? hourColor : getColorForZone(settingFontColorScheme, zoneIdx, true);
             }
         }
 
-        // Draw order depends on BarsPosition setting:
-        //   "Time on Top":  graph → outline → fill  (time fully on top)
-        //   "Bars on Top":  outline → fill → graph  (bars fully on top)
-        var hourStr = cachedHourStr;
-        var minStr = cachedMinStr;
-        var just = Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER;
-        var justRight = Graphics.TEXT_JUSTIFY_RIGHT | Graphics.TEXT_JUSTIFY_VCENTER;
-        var justLeft = Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER;
-        var hasGraph = (heartRateZones != null && heartRateZones.size() > 5);
-        var barsInFront = (getBarsPosition() == 1);
-
-        // 1. Graph first when "Time on Top"
-        if (hasGraph && !barsInFront) {
-            drawHeartRateGraph(dc, isLowPower);
-        }
-
-        // 2. Draw outline (border) - always behind fill
-        var outFont = isLowPower ? bigNumProtomoleculeOutline : bigNumProtomoleculeOutlineThick;
-        var outColor = isLowPower ? Graphics.COLOR_DK_GRAY : OUTLINE_COLOR;
-        dc.setColor(outColor, Graphics.COLOR_TRANSPARENT);
-        if (timeLayout == 1) {
-            dc.drawText(centerX - 2, textYSide, outFont, hourStr, justRight);
-            dc.drawText(centerX + 2, textYSide, outFont, minStr, justLeft);
-        } else {
-            dc.drawText(centerX, textYHH, outFont, hourStr, just);
-            dc.drawText(centerX, textYMM, outFont, minStr, just);
-        }
-
-        // 3. Draw fill
-        if (isLowPower) {
-            dc.setColor(OUTLINE_COLOR, Graphics.COLOR_TRANSPARENT);
-            if (timeLayout == 1) {
-                dc.drawText(centerX - 2, textYSide, bigNumProtomolecule, hourStr, justRight);
-                dc.drawText(centerX + 2, textYSide, bigNumProtomolecule, minStr, justLeft);
-            } else {
-                dc.drawText(centerX, textYHH, bigNumProtomolecule, hourStr, just);
-                dc.drawText(centerX, textYMM, bigNumProtomolecule, minStr, just);
-            }
-        } else {
-            if (timeLayout == 1) {
-                dc.setColor(hourColor, Graphics.COLOR_TRANSPARENT);
-                dc.drawText(centerX - 2, textYSide, bigNumProtomolecule, hourStr, justRight);
-                dc.setColor(minColor, Graphics.COLOR_TRANSPARENT);
-                dc.drawText(centerX + 2, textYSide, bigNumProtomolecule, minStr, justLeft);
-            } else {
-                dc.setColor(hourColor, Graphics.COLOR_TRANSPARENT);
-                dc.drawText(centerX, textYHH, bigNumProtomolecule, hourStr, just);
-                dc.setColor(minColor, Graphics.COLOR_TRANSPARENT);
-                dc.drawText(centerX, textYMM, bigNumProtomolecule, minStr, just);
-            }
-        }
-
-        // 4. Graph last when "Bars on Top" - completely on top of time
-        if (hasGraph && barsInFront) {
-            drawHeartRateGraph(dc, isLowPower);
-        }
-
-}
-
-    //! Ensures cachedHeartRateData and bar caches are populated. Production: sensor fetch only.
-    (:production)
-    private function ensureHeartRateDataCached() as Lang.Boolean {
-        doProductionFetch();
-        return ensureHeartRateDataCachedCore();
+        drawFrame(dc, false, hasBars, hourColor, minColor);
     }
 
-    //! Ensures cachedHeartRateData and bar caches are populated. Debug: synthetic HR data.
-    (:debugHrData)
-    private function ensureHeartRateDataCached() as Lang.Boolean {
-        var debugData = generateDebugHrData();
-        if (debugData.size() > 0) {
-            cachedHeartRateData = debugData;
-            cachedHeartRateTimes = null;  // debug uses index-based sampling
-            cachedDataSampleCount = cachedDataSampleCount + 1;
+    //! One frame: cached bars (blit) + time text, in the configured stacking order.
+    //! lowPower: outline-only time and bars (AMOLED always-on lit-pixel limit).
+    private function drawFrame(dc as Gfx.Dc, lowPower as Lang.Boolean, hasBars as Lang.Boolean,
+                               hourColor as Lang.Number, minColor as Lang.Number) as Void {
+        var barsInFront = (settingBarsPosition == 1);
+        var bmp = hasBars ? getBarsBitmap(lowPower, barsInFront) : null;
+
+        if (barsInFront || bmp == null) {
+            dc.setColor(Gfx.COLOR_BLACK, Gfx.COLOR_BLACK);
+            dc.clear();
         }
-        return ensureHeartRateDataCachedCore();
+        if (!barsInFront) {
+            // Opaque full-screen bitmap: the blit also clears the screen
+            if (bmp != null) { dc.drawBitmap(0, 0, bmp); }
+            else if (hasBars) { renderBars(dc, lowPower); }
+        }
+
+        drawTimeLayer(dc, lowPower, hourColor, minColor);
+
+        if (barsInFront) {
+            if (bmp != null) { dc.drawBitmap(0, 0, bmp); }
+            else if (hasBars) { renderBars(dc, lowPower); }
+        }
     }
 
-    //! Production path: throttled sensor fetch. Returns true if fetch was attempted.
+    //! The cached bars bitmap for this mode, (re)rendered when stale. Null when bitmaps
+    //! are unavailable (the caller then draws the bars directly).
+    private function getBarsBitmap(lowPower as Lang.Boolean, alpha as Lang.Boolean) as Gfx.BufferedBitmap or Null {
+        if (!hasBitmapApi) { return null; }
+        var idx = lowPower ? 1 : 0;
+        var ref = bmpRef[idx] as Gfx.BufferedBitmapReference or Null;
+        if (ref == null || bmpAlpha[idx] != alpha) {
+            var opts = { :width => width, :height => height };
+            if (alpha) { opts[:alphaBlending] = Graphics.ALPHA_BLENDING_FULL; }
+            ref = Graphics.createBufferedBitmap(opts);
+            bmpRef[idx] = ref;
+            bmpAlpha[idx] = alpha;
+            bmpData[idx] = -1;
+        }
+        var bmp = ref.get() as Gfx.BufferedBitmap or Null;
+        if (bmp == null) { return null; }
+        if (bmpData[idx] != cachedDataSampleCount || bmpSettings[idx] != settingsVersion || !bmp.isCached()) {
+            Diag.log("render bars lp=" + lowPower);
+            var bdc = bmp.getDc();
+            if (alpha) {
+                bdc.setColor(Graphics.COLOR_TRANSPARENT, Graphics.COLOR_TRANSPARENT);
+            } else {
+                bdc.setColor(Graphics.COLOR_BLACK, Graphics.COLOR_BLACK);
+            }
+            bdc.clear();
+            renderBars(bdc, lowPower);
+            bmpData[idx] = cachedDataSampleCount;
+            bmpSettings[idx] = settingsVersion;
+        }
+        return bmp;
+    }
+
+    //! Hour + minute, outline layer then fill layer.
+    private function drawTimeLayer(dc as Gfx.Dc, lowPower as Lang.Boolean, hourColor as Lang.Number, minColor as Lang.Number) as Void {
+        var sideBySide = (settingTimeLayout == 1);
+        var centered = (settingTimePosition == 1);
+        var yA;  // hour (stacked) or both (side by side)
+        var yB = 0;
+        if (sideBySide) {
+            yA = (height * (centered ? SIDEBYSIDE_Y_RATIO_CENTER : SIDEBYSIDE_Y_RATIO_TOP)).toNumber();
+        } else {
+            yA = (height * (centered ? HOUR_Y_RATIO_CENTER : HOUR_Y_RATIO_TOP)).toNumber();
+            yB = (height * (centered ? MINUTE_Y_RATIO_CENTER : MINUTE_Y_RATIO_TOP)).toNumber();
+        }
+        var outFont = lowPower ? bigNumProtomoleculeOutline : bigNumProtomoleculeOutlineThick;
+        dc.setColor(lowPower ? Graphics.COLOR_DK_GRAY : OUTLINE_COLOR, Graphics.COLOR_TRANSPARENT);
+        drawTime(dc, outFont, cachedHourStr, cachedMinStr, sideBySide, yA, yB, -1, -1);
+        drawTime(dc, bigNumProtomolecule, cachedHourStr, cachedMinStr, sideBySide, yA, yB, hourColor, minColor);
+    }
+
+    //! Draw hour + minute. Colours of -1 keep the dc's current colour.
+    protected function drawTime(dc as Gfx.Dc, font as Gfx.FontType, hourStr as Lang.String, minStr as Lang.String,
+                              sideBySide as Lang.Boolean, yA as Lang.Number, yB as Lang.Number,
+                              hourColor as Lang.Number, minColor as Lang.Number) as Void {
+        if (hourColor != -1) { dc.setColor(hourColor, Graphics.COLOR_TRANSPARENT); }
+        if (sideBySide) {
+            dc.drawText(centerX - 2, yA, font, hourStr, Graphics.TEXT_JUSTIFY_RIGHT | Graphics.TEXT_JUSTIFY_VCENTER);
+        } else {
+            dc.drawText(centerX, yA, font, hourStr, Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        }
+        if (minColor != -1 && minColor != hourColor) { dc.setColor(minColor, Graphics.COLOR_TRANSPARENT); }
+        if (sideBySide) {
+            dc.drawText(centerX + 2, yA, font, minStr, Graphics.TEXT_JUSTIFY_LEFT | Graphics.TEXT_JUSTIFY_VCENTER);
+        } else {
+            dc.drawText(centerX, yB, font, minStr, Graphics.TEXT_JUSTIFY_CENTER | Graphics.TEXT_JUSTIFY_VCENTER);
+        }
+    }
+
+    //! Draw every bar in one pass straight from the ring buffer: filled in zone colours
+    //! (high power) or grey outlines (always-on). Coordinates are clamped to the screen.
+    protected function renderBars(dc as Gfx.Dc, lowPower as Lang.Boolean) as Void {
+        var zones = heartRateZones as Lang.Array;
+        var zmax = zones[5] as Lang.Number;
+        if (zmax <= 0) { zmax = 200; }  // guard against corrupted profile
+        var z0 = zones[0] as Lang.Number;
+        var z1 = zones[1] as Lang.Number;
+        var z2 = zones[2] as Lang.Number;
+        var z3 = zones[3] as Lang.Number;
+        var z4 = zones[4] as Lang.Number;
+        var gb = graphBottom;
+        var gh = graphHeight;
+        var barW = getBarWidth();
+        var n = numBars;
+        var first = newestSlot - n + 1;
+        var vals = slotValues;
+        var colors = null;
+        if (lowPower) {
+            dc.setPenWidth(1);
+            dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_TRANSPARENT);
+        } else {
+            var scheme = settingBarsColorScheme;
+            colors = [getColorForZone(scheme, 0, false), getColorForZone(scheme, 1, false), getColorForZone(scheme, 2, false),
+                      getColorForZone(scheme, 3, false), getColorForZone(scheme, 4, false), getColorForZone(scheme, 5, false)];
+        }
+        var lastZ = -1;
+        for (var i = 0; i < n; i++) {
+            var hr = vals[(first + i) % n];
+            if (hr == null) { continue; }
+            var y = gb - (hr * gh / zmax);
+            if (y >= gb) { continue; }
+            if (y < 0) { y = 0; }
+            if (lowPower) {
+                dc.drawRectangle(i * BAR_PITCH, y, barW, gb - y);
+            } else {
+                var z = (hr < z0) ? 0 : (hr <= z1) ? 1 : (hr <= z2) ? 2 : (hr <= z3) ? 3 : (hr <= z4) ? 4 : 5;
+                if (z != lastZ) { dc.setColor(colors[z], Graphics.COLOR_TRANSPARENT); lastZ = z; }
+                dc.fillRectangle(i * BAR_PITCH, y, barW, gb - y);
+            }
+        }
+    }
+
+    //! Production: throttled, incremental SensorHistory fetch into the ring buffer.
     (:production)
-    private function doProductionFetch() as Lang.Boolean {
+    private function refreshSlotData() as Void {
+        if (!hasSensorHistory) { return; }
         var now = System.getTimer();
-        var shouldAttemptFetch = (cachedHeartRateData == null) || (now - lastFetchTime >= barIntervalMs);
-        if (!shouldAttemptFetch || !hasSensorHistory) {
-            return false;
-        }
-        if (deferFetch && cachedHeartRateData != null) {
+        if (newestSlot >= 0 && (now - lastFetchTime < barIntervalMs)) { return; }
+        if (deferFetch && newestSlot >= 0) {
+            // Draw the first wake frame from the cache; fetch on the next update.
             deferFetch = false;
             Ui.requestUpdate();
-            return false;
+            return;
         }
         deferFetch = false;
+        doProductionFetch();
+    }
+
+    //! Bring the ring up to date. Full 6 h fetch when empty or after a clock jump; otherwise
+    //! clear the slots that rolled over and fetch only from the previous newest slot (which
+    //! was still filling) onwards. Per slot, the sample closest to the slot centre wins.
+    (:production)
+    protected function doProductionFetch() as Void {
+        Diag.log("fetch start newest=" + newestSlot);
+        lastFetchTime = System.getTimer();
+        var n = numBars;
+        var ss = slotSec;
+        var nowSec = Time.now().value();
+        var cur = nowSec / ss;
+        var first = cur - n + 1;
+        var vals = slotValues;
+        var dist = slotDist;
+        var fromSlot;
+        if (newestSlot < 0 || cur < newestSlot || cur - newestSlot >= n) {
+            for (var i = 0; i < n; i++) { vals[i] = null; dist[i] = ss; }
+            lastDataSlot = -1;
+            fromSlot = first;
+        } else {
+            // Slots newestSlot .. cur get (re)filled; their ring entries hold stale data.
+            for (var s = newestSlot; s <= cur; s++) { vals[s % n] = null; dist[s % n] = ss; }
+            if (lastDataSlot >= newestSlot) { lastDataSlot = newestSlot - 1; }
+            fromSlot = newestSlot;
+        }
+        newestSlot = cur;
         try {
-            var sensorIter = Toybox.SensorHistory.getHeartRateHistory({:period => PERIOD_SEC, :order => SensorHistory.ORDER_OLDEST_FIRST});
-            var newData = [];
-            var newTimes = [];
-            var sample = sensorIter.next();
+            var iter = Toybox.SensorHistory.getHeartRateHistory({
+                :period => new Time.Duration(nowSec - fromSlot * ss + 1),
+                :order => SensorHistory.ORDER_OLDEST_FIRST });
+            var half = ss / 2;
+            var sample = iter.next();
             while (sample != null) {
-                if (sample.data != null && sample.when != null) {
-                    newData.add(sample.data);
-                    newTimes.add((sample.when as Time.Moment).value());
+                var hr = sample.data;
+                var when = sample.when;
+                if (hr != null && when != null) {
+                    var t = when.value();
+                    var abs = t / ss;
+                    if (abs >= fromSlot && abs <= cur) {
+                        var d = t - abs * ss - half;
+                        if (d < 0) { d = -d; }
+                        var k = abs % n;
+                        if (d < (dist[k] as Lang.Number)) {
+                            dist[k] = d;
+                            vals[k] = hr;
+                            if (abs > lastDataSlot) { lastDataSlot = abs; }
+                        }
+                    }
                 }
-                sample = sensorIter.next();
-            }
-            lastFetchTime = now;
-            var newSize = newData.size();
-            if (newSize > 0) {
-                cachedHeartRateData = newData;
-                cachedHeartRateTimes = newTimes;
-                cachedFetchEpochSec = Time.now().value();
-                cachedDataSampleCount = cachedDataSampleCount + 1;
+                sample = iter.next();
             }
         } catch (ex) {
-            lastFetchTime = now;
+            Diag.log("fetch exception");
         }
-        return true;
+        cachedDataSampleCount++;
+        Diag.log("fetch done lastData=" + lastDataSlot);
     }
 
-    //! Shared cache validation and bar rebuild logic (no debug-only symbol references).
-    private function ensureHeartRateDataCachedCore() as Lang.Boolean {
-        var zones = heartRateZones;
-        if (zones == null || zones.size() < 6) {
-            return false;
-        }
-        if (cachedHeartRateData == null) {
-            return false;
-        }
-        var data = cachedHeartRateData as Lang.Array;
-        var dataSize = data.size();
-        if (dataSize == 0) {
-            return false;
-        }
+    //! Debug: synthetic HR data, regenerated once per minute.
+    (:debugHrData)
+    private var lastDebugMinute as Lang.Number = -1;
 
-        // Check if BarsHeight setting changed; recompute graph layout if so
-        var heightPct = getBarsHeightPercent();
-        if (heightPct != lastComputedHeightPct) {
-            graphHeight = height * heightPct / 100;
-            graphTop = graphBottom - graphHeight;
-            lastComputedHeightPct = heightPct;
-            cachedBarVersion = -1;       // force bar rebuild
-            graphBitmapVersion = -1;     // force bitmap re-render
-        }
-        
-        // Recompute bar cache only when HR data has changed (or after layout invalidation)
-        if (cachedBarVersion != cachedDataSampleCount) {
-            var zone0Bars = [];
-            var zone1Bars = [];
-            var zone2Bars = [];
-            var zone3Bars = [];
-            var zone4Bars = [];
-            var zone5Bars = [];
-            var allBars = [];
-            
-            var zones5 = zones[5] as Lang.Number;
-            if (zones5 <= 0) { zones5 = 200; } // guard against corrupted profile
-            var slotDurationSec = PERIOD_SEC / MAX_DATA_POINTS;
-            var times = cachedHeartRateTimes;
-            var useTimeBased = (times != null && times.size() == dataSize);
-
-            // Build per-slot HR values: time-based (production) or index-based (debug)
-            if (useTimeBased && dataSize > 0) {
-                // Use epoch time captured at fetch so slots align with stored timestamps
-                var periodStartSec = cachedFetchEpochSec - PERIOD_SEC;
-                var slotValues = new [MAX_DATA_POINTS];
-                var slotDist = new [MAX_DATA_POINTS];
-                for (var i = 0; i < MAX_DATA_POINTS; i++) {
-                    slotValues[i] = null;
-                    slotDist[i] = slotDurationSec;
-                }
-                // O(N) single pass: assign each sample to its time slot
-                for (var j = 0; j < dataSize; j++) {
-                    var sampleSec = (times[j]) as Lang.Number;
-                    var offsetSec = sampleSec - periodStartSec;
-                    if (offsetSec < 0) { continue; }
-                    var slotIdx = offsetSec / slotDurationSec;
-                    if (slotIdx >= MAX_DATA_POINTS) { continue; }
-                    var slotCenterSec = periodStartSec + slotIdx * slotDurationSec + slotDurationSec / 2;
-                    var d = sampleSec - slotCenterSec;
-                    var dist = (d > 0) ? d : (-d);
-                    if (dist < (slotDist[slotIdx] as Lang.Number)) {
-                        slotDist[slotIdx] = dist;
-                        slotValues[slotIdx] = data[j] as Lang.Number or Null;
-                    }
-                }
-                // Build bar arrays from slot values; empty slots are simply skipped (black = background)
-                for (var slotIdx = 0; slotIdx < MAX_DATA_POINTS; slotIdx++) {
-                    var heartRate = slotValues[slotIdx];
-                    if (heartRate == null) { continue; }
-                    var x = slotIdx * stepSize;
-                    var y = (graphBottom - (heartRate * graphHeight / zones5)).toNumber();
-                    var barH = graphBottom - y;
-                    if (barH <= 0) { continue; }
-                    allBars.add(x); allBars.add(y); allBars.add(barH);
-                    var z = getZoneIndex(heartRate, zones);
-                    if (z == 0) { zone0Bars.add(x); zone0Bars.add(y); zone0Bars.add(barH); }
-                    else if (z == 1) { zone1Bars.add(x); zone1Bars.add(y); zone1Bars.add(barH); }
-                    else if (z == 2) { zone2Bars.add(x); zone2Bars.add(y); zone2Bars.add(barH); }
-                    else if (z == 3) { zone3Bars.add(x); zone3Bars.add(y); zone3Bars.add(barH); }
-                    else if (z == 4) { zone4Bars.add(x); zone4Bars.add(y); zone4Bars.add(barH); }
-                    else { zone5Bars.add(x); zone5Bars.add(y); zone5Bars.add(barH); }
-                }
-            } else {
-                // Debug / fallback: index-based proportional sampling (no timestamps)
-                var lastIdx = dataSize - 1;
-                for (var i = 0; i < MAX_DATA_POINTS; i++) {
-                    var sampleIndex = i * dataSize / MAX_DATA_POINTS;
-                    if (sampleIndex > lastIdx) { sampleIndex = lastIdx; }
-                    var heartRate = data[sampleIndex] as Lang.Number or Null;
-                    if (heartRate == null) { continue; }
-                    var x = i * stepSize;
-                    var y = (graphBottom - (heartRate * graphHeight / zones5)).toNumber();
-                    var barH = graphBottom - y;
-                    if (barH <= 0) { continue; }
-                    allBars.add(x); allBars.add(y); allBars.add(barH);
-                    var z = getZoneIndex(heartRate, zones);
-                    if (z == 0) { zone0Bars.add(x); zone0Bars.add(y); zone0Bars.add(barH); }
-                    else if (z == 1) { zone1Bars.add(x); zone1Bars.add(y); zone1Bars.add(barH); }
-                    else if (z == 2) { zone2Bars.add(x); zone2Bars.add(y); zone2Bars.add(barH); }
-                    else if (z == 3) { zone3Bars.add(x); zone3Bars.add(y); zone3Bars.add(barH); }
-                    else if (z == 4) { zone4Bars.add(x); zone4Bars.add(y); zone4Bars.add(barH); }
-                    else { zone5Bars.add(x); zone5Bars.add(y); zone5Bars.add(barH); }
-                }
-            }
-            
-            cachedZone0Bars = zone0Bars;
-            cachedZone1Bars = zone1Bars;
-            cachedZone2Bars = zone2Bars;
-            cachedZone3Bars = zone3Bars;
-            cachedZone4Bars = zone4Bars;
-            cachedZone5Bars = zone5Bars;
-            cachedAllBars = allBars;
-            cachedBarVersion = cachedDataSampleCount;
-        }
-        
-        return true;
-    }
-
-    private function drawHeartRateGraph(dc as Gfx.Dc, useOutline as Lang.Boolean) as Void {
-        if (!ensureHeartRateDataCached()) {
-            return;
-        }
-
-        // Draw bars – prefer single drawBitmap blit; fall back to per-bar loops
-        if (useOutline) {
-            // Low-power / Always On: draw outlined rectangles directly on the DC.
-            // No-data slots are simply absent (black background = implicit gap).
-            var bars = cachedAllBars;
-            if (bars != null && bars.size() > 0) {
-                dc.setPenWidth(1);
-                dc.setColor(Graphics.COLOR_DK_GRAY, Graphics.COLOR_BLACK);
-                var sz = bars.size();
-                var barW = getBarWidth();
-                for (var i = 0; i < sz; i += 3) {
-                    dc.drawRectangle(bars[i] as Lang.Number, bars[i + 1] as Lang.Number, barW, bars[i + 2] as Lang.Number);
-                }
-            }
-        } else {
-            var bitmapDrawn = false;
-            if (hasBufferedBitmap && graphBitmapRef != null) {
-                var gBitmap = graphBitmapRef.get();
-                if (gBitmap != null) {
-                    var barsScheme = getBarsColorScheme();
-                    // Re-render to bitmap if bar data changed, scheme changed, gap changed, or bitmap was evicted
-                    var barsGap = getBarsGap();
-                    if (graphBitmapVersion != cachedBarVersion || lastRenderedBarsScheme != barsScheme || lastRenderedBarsGap != barsGap || !(gBitmap as Gfx.BufferedBitmap).isCached()) {
-                        drawBarsToBitmap(gBitmap as Gfx.BufferedBitmap, barsScheme);
-                        lastRenderedBarsScheme = barsScheme;
-                        lastRenderedBarsGap = barsGap;
-                    }
-                    dc.drawBitmap(0, 0, gBitmap as Gfx.BufferedBitmap);
-                    bitmapDrawn = true;
-                }
-            }
-            if (!bitmapDrawn) {
-                // Fallback: per-bar fillRectangle loops (setPenWidth not needed for fillRectangle)
-                drawAllBarBuckets(dc, Graphics.COLOR_BLACK, 0, getBarsColorScheme(), getBarWidth());
-            }
+    (:debugHrData)
+    private function refreshSlotData() as Void {
+        var ct = System.getClockTime();
+        var m = ct.hour * 60 + ct.min;
+        if (m == lastDebugMinute && newestSlot >= 0) { return; }
+        lastDebugMinute = m;
+        var data = generateDebugHrData();
+        if (data.size() == numBars) {
+            var cur = Time.now().value() / slotSec;
+            var first = cur - numBars + 1;
+            for (var i = 0; i < numBars; i++) { slotValues[(first + i) % numBars] = data[i]; }
+            newestSlot = cur;
+            lastDataSlot = cur;
+            cachedDataSampleCount++;
         }
     }
-
-    //! Draw a bucket of bars with a single color (flat array: every 3 elements = x, y, h).
-    //! bgColor sets the DC background; yOffset shifts each bar's Y (used for bitmap-local coords).
-    //! barWidth: 2 for default gaps, stepSize for no gaps.
-    private function drawBarBucket(dc as Gfx.Dc, bars as Lang.Array or Null, color as Lang.Number, bgColor as Lang.Number, yOffset as Lang.Number, barWidth as Lang.Number) as Void {
-        if (bars == null || bars.size() == 0) {
-            return;
-        }
-        dc.setColor(color, bgColor);
-        var sz = bars.size();  // cache size – avoid repeated method call
-        for (var i = 0; i < sz; i += 3) {
-            // barH > 0 guaranteed by cache builder
-            dc.fillRectangle(bars[i] as Lang.Number, (bars[i + 1] as Lang.Number) - yOffset, barWidth, bars[i + 2] as Lang.Number);
-        }
-    }
-
-    //! Draw all six zone buckets onto a DC using the given color scheme.
-    //! No-data slots are absent; black background serves as implicit gap.
-    private function drawAllBarBuckets(dc as Gfx.Dc, bgColor as Lang.Number, yOffset as Lang.Number, barsScheme as Lang.Number, barWidth as Lang.Number) as Void {
-        drawBarBucket(dc, cachedZone0Bars, getColorForZone(barsScheme, 0, false), bgColor, yOffset, barWidth);
-        drawBarBucket(dc, cachedZone1Bars, getColorForZone(barsScheme, 1, false), bgColor, yOffset, barWidth);
-        drawBarBucket(dc, cachedZone2Bars, getColorForZone(barsScheme, 2, false), bgColor, yOffset, barWidth);
-        drawBarBucket(dc, cachedZone3Bars, getColorForZone(barsScheme, 3, false), bgColor, yOffset, barWidth);
-        drawBarBucket(dc, cachedZone4Bars, getColorForZone(barsScheme, 4, false), bgColor, yOffset, barWidth);
-        drawBarBucket(dc, cachedZone5Bars, getColorForZone(barsScheme, 5, false), bgColor, yOffset, barWidth);
-    }
-
-    //! Render filled HR bars into the off-screen full-view bitmap using bars color scheme.
-    //! Bitmap is full screen height so bar coordinates map 1:1 (no y translation needed).
-    //! Caller passes the resolved BufferedBitmap to avoid redundant weak-reference lookups.
-    private function drawBarsToBitmap(bitmap as Gfx.BufferedBitmap, barsScheme as Lang.Number) as Void {
-        var bdc = bitmap.getDc();
-        // Clear to transparent
-        bdc.setColor(Graphics.COLOR_TRANSPARENT, Graphics.COLOR_TRANSPARENT);
-        bdc.clear();
-        // Draw each zone bucket with scheme colors (bitmap is full-screen, no y offset needed)
-        drawAllBarBuckets(bdc, Graphics.COLOR_TRANSPARENT, 0, barsScheme, getBarWidth());
-        graphBitmapVersion = cachedBarVersion;
-    }
-
 
     //! Generate time-varying synthetic HR data that scrolls with the clock.
     //! Uses overlapping triangle waves + pseudo-random jitter to produce
@@ -834,22 +705,21 @@ class VivoHeartView extends Ui.WatchFace {
 
         var ct = System.getClockTime();
         var minuteNow = ct.hour * 60 + ct.min;
-        // Each bar spans ~5 minutes (360 min / MAX_DATA_POINTS)
-        var barSpan = 360 / MAX_DATA_POINTS;
+        // Each bar spans PERIOD_SEC / numBars (~4-5 minutes)
+        var barSpan = PERIOD_SEC / 60 / numBars;
+        if (barSpan < 1) { barSpan = 1; }
 
-        var data = new [MAX_DATA_POINTS];
-        for (var i = 0; i < MAX_DATA_POINTS; i++) {
+        var data = new [numBars];
+        for (var i = 0; i < numBars; i++) {
             // Absolute minute this bar represents (oldest on the left)
-            var t = minuteNow - (MAX_DATA_POINTS - 1 - i) * barSpan;
+            var t = minuteNow - (numBars - 1 - i) * barSpan;
 
             // --- Slow triangle wave (period ~127 min ≈ 2 hr) ---
-            // Drives broad activity blocks (rest ↔ exercise)
             var sp = t % 127;
             if (sp < 0) { sp = sp + 127; }
             var slow = (sp < 64) ? (sp * 100 / 63) : ((127 - sp) * 100 / 63);
 
             // --- Medium triangle wave (period ~41 min) ---
-            // Adds interval-style variation within an activity block
             var mp = t % 41;
             if (mp < 0) { mp = mp + 41; }
             var med = (mp < 21) ? (mp * 100 / 20) : ((41 - mp) * 100 / 20);
@@ -871,22 +741,20 @@ class VivoHeartView extends Ui.WatchFace {
         return data;
     }
 
-    // Called when this View is removed from the screen. Save the
-    // state of this View here. This includes freeing resources from
-    // memory.
     function onHide() as Void {
     }
 
-    // The user has just looked at their watch. Timers and animations may be started here.
+    // The user has just looked at their watch.
     function onExitSleep() as Void {
+        Diag.log("onExitSleep");
         isLowPower = false;
         deferFetch = true;  // draw first wake frame with stale cache, fetch on next update
         cachedIs24Hour = System.getDeviceSettings().is24Hour;  // refresh on wake
     }
 
-    // Terminate any active timers and prepare for slow updates.
     // AMOLED: draw <10% pixels in onUpdate or display will turn off.
     function onEnterSleep() as Void {
+        Diag.log("onEnterSleep");
         isLowPower = true;
     }
 }

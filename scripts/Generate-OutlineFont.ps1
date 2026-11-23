@@ -10,13 +10,14 @@ param(
     [int]$Inside = 1,
     [string]$OutputPng = "ProtoMolecule_0_Outline.png",
     [double]$Scale = 1.0,
+    [string]$SourceDir = (Join-Path $PSScriptRoot "..esourcesonts"),  # where the source SVG/template lives
     [string]$FontsDir = (Join-Path $PSScriptRoot "..\resources\fonts"),
     [string]$TempSvgPath = ""  # If set, keep temp SVG at this path (for FNT generation from object bboxes)
 )
 
 $ErrorActionPreference = "Stop"
 $FontsDir = (Resolve-Path $FontsDir).Path
-$SourceSvg = Join-Path $FontsDir "ProtoMolecule_0.svg"
+$SourceSvg = Join-Path (Resolve-Path $SourceDir).Path "ProtoMolecule_0.svg"
 $TempSvg = if ($TempSvgPath) { $TempSvgPath } else { Join-Path $env:TEMP "ProtoMolecule_outline_$([guid]::NewGuid().ToString('N').Substring(0,8)).svg" }
 $DestPng = Join-Path $FontsDir $OutputPng
 
@@ -53,6 +54,12 @@ $inkscapePaths = @(
 $inkscape = $null
 foreach ($p in $inkscapePaths) {
     if ($p -and (Test-Path $p -ErrorAction SilentlyContinue)) { $inkscape = $p; break }
+}
+# inkscape.exe is a GUI-subsystem binary: PowerShell cannot capture its stdout (--query-all returns nothing).
+# The inkscape.com console wrapper next to it can.
+if ($inkscape -and $inkscape -like "*.exe") {
+    $inkscapeCom = [System.IO.Path]::ChangeExtension($inkscape, ".com")
+    if (Test-Path $inkscapeCom) { $inkscape = $inkscapeCom }
 }
 if (-not $inkscape) {
     Write-Host "Inkscape not found. Install from https://inkscape.org or add to PATH." -ForegroundColor Red

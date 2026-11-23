@@ -1,0 +1,5 @@
+project.manifest = bin/manifest.diag.xml
+base.sourcePath = source
+base.resourcePath = resources;resources-diag
+# Diagnostic build: step logging (source/Diag.mc) + own app id/name, see scripts/Sideload-Test.ps1
+base.excludeAnnotations = debugHrData;bench;nodiag

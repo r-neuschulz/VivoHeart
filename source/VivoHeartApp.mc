@@ -9,6 +9,7 @@ class VivoHeartApp extends App.AppBase {
 
     function initialize() {
         AppBase.initialize();
+        Diag.log("app init");
     }
 
     // onStart() is called on application start up
@@ -21,9 +22,17 @@ class VivoHeartApp extends App.AppBase {
 
     // Return the initial view of your application here
     function getInitialView() as [Ui.Views] or [Ui.Views, Ui.InputDelegates] {
-        vivoHeartView = new VivoHeartView();
+        Diag.log("getInitialView");
+        vivoHeartView = makeView();
+        Diag.log("view created");
         return [ vivoHeartView ];
     }
+
+    (:nobench)
+    private function makeView() as VivoHeartView { return new VivoHeartView(); }
+
+    (:bench)
+    private function makeView() as VivoHeartView { return new VivoHeartBenchView(); }
 
     // Return the settings view for "Customize" / "Trigger App Settings"
     function getSettingsView() as [Ui.Views] or [Ui.Views, Ui.InputDelegates] or Null {

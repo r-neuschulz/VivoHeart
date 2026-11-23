@@ -2,7 +2,7 @@
 <iq:manifest xmlns:iq="http://www.garmin.com/xml/connectiq" version="0">
     <iq:application entry="VivoHeartApp" id="25d02826-d46b-4b1b-9494-7da33d20852e" launcherIcon="@Drawables.LauncherIcon" minSdkVersion="4.2.0" name="@Strings.AppName" type="watchface">
         <iq:products>
-            <!-- 454x454 round AMOLED - same resolution as Epix 2 Pro 51mm -->
+            <!-- 454x454 round AMOLED (fonts designed at this size) -->
             <iq:product id="approachs7047mm"/>
             <iq:product id="descentmk351mm"/>
             <iq:product id="epix2pro51mm"/>
@@ -11,6 +11,35 @@
             <iq:product id="fr965"/>
             <iq:product id="fr970"/>
             <iq:product id="venu3"/>
+            <!-- 416x416 round AMOLED -->
+            <iq:product id="d2airx10"/>
+            <iq:product id="d2mach1"/>
+            <iq:product id="epix2"/>
+            <iq:product id="epix2pro47mm"/>
+            <iq:product id="fenix843mm"/>
+            <iq:product id="fenixe"/>
+            <iq:product id="fr265"/>
+            <iq:product id="instinct3amoled50mm"/>
+            <iq:product id="venu2"/>
+            <iq:product id="venu2plus"/>
+            <!-- 390x390 round AMOLED -->
+            <iq:product id="approachs50"/>
+            <iq:product id="approachs7042mm"/>
+            <iq:product id="descentg2"/>
+            <iq:product id="descentmk343mm"/>
+            <iq:product id="epix2pro42mm"/>
+            <iq:product id="fr165"/>
+            <iq:product id="fr165m"/>
+            <iq:product id="fr57042mm"/>
+            <iq:product id="instinct3amoled45mm"/>
+            <iq:product id="marq2"/>
+            <iq:product id="marq2aviator"/>
+            <iq:product id="venu3s"/>
+            <iq:product id="vivoactive5"/>
+            <iq:product id="vivoactive6"/>
+            <!-- 360x360 round AMOLED -->
+            <iq:product id="fr265s"/>
+            <iq:product id="venu2s"/>
         </iq:products>
         <iq:permissions>
             <iq:uses-permission id="SensorHistory"/>
