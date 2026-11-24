@@ -1,10 +1,11 @@
-name: Release on .prg
+name: Release on .prg or .iq
 
 on:
   push:
     branches: [master, main]
     paths:
       - 'VivoHeart.prg'
+      - 'VivoHeart.iq'
 
 permissions:
   contents: write
@@ -39,6 +40,7 @@ jobs:
       - name: Generate release notes
         env:
           GH_TOKEN: ${{ github.token }}
+          STORE_UPDATE_URL: https://apps.garmin.com/developer/b6997a35-c790-4fdb-b50e-0e4ff90c8d12/apps/78734b9c-f2e9-4ac0-a117-55f2591900d2/update
         id: notes
         run: |
           PREV_TAG=$(gh release list --limit 1 --exclude-drafts --json tagName -q '.[0].tagName')
@@ -49,6 +51,8 @@ jobs:
           fi
           echo "body<<EOF" >> $GITHUB_OUTPUT
           echo "$BODY" >> $GITHUB_OUTPUT
+          echo "" >> $GITHUB_OUTPUT
+          echo "Connect IQ Store: [Update here](${STORE_UPDATE_URL}) (upload VivoHeart.iq)" >> $GITHUB_OUTPUT
           echo "EOF" >> $GITHUB_OUTPUT
 
       - name: Create Release
@@ -57,6 +61,8 @@ jobs:
           tag_name: ${{ steps.version.outputs.tag }}
           name: Release ${{ steps.version.outputs.tag }}
           body: ${{ steps.notes.outputs.body }}
-          files: VivoHeart.prg
+          files: |
+            VivoHeart.prg
+            VivoHeart.iq
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
