@@ -19,9 +19,11 @@ jobs:
           fetch-depth: 0
 
       - name: Get next version
+        env:
+          GH_TOKEN: ${{ github.token }}
         id: version
         run: |
-          LATEST=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
+          LATEST=$(gh release list --limit 1 --exclude-drafts --json tagName -q '.[0].tagName')
           if [ -z "$LATEST" ]; then
             echo "tag=v1.1" >> $GITHUB_OUTPUT
           else
@@ -35,9 +37,11 @@ jobs:
           fi
 
       - name: Generate release notes
+        env:
+          GH_TOKEN: ${{ github.token }}
         id: notes
         run: |
-          PREV_TAG=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
+          PREV_TAG=$(gh release list --limit 1 --exclude-drafts --json tagName -q '.[0].tagName')
           if [ -z "$PREV_TAG" ]; then
             BODY=$(git log --pretty=format:"- %s (%h)" --reverse)
           else
